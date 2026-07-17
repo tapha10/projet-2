@@ -65,21 +65,21 @@
 
 - Combinaisons candidates générées et scorées : 120 000
 - Score composite : équilibre fréquence historique/récente (poids fort), stabilité des intervalles, associations de paires (poids faible), somme centrale, équilibre pair/impair et bas/haut, répartition par dizaines, pénalité suites longues, pénalité similarité au dernier tirage, pénalité profils 'populaires' (anti-partage de gain, pas anti-hasard).
-- Sélection finale tirée avec pondération aléatoire contrôlée parmi le top 50 des scores (graine aléatoire = 669129048), afin de ne pas renvoyer systématiquement la même combinaison.
+- Sélection finale tirée avec pondération aléatoire contrôlée parmi le top 50 des scores (graine aléatoire = 1453315676), afin de ne pas renvoyer systématiquement la même combinaison.
 
 ## Grille unique proposée
 
-**Numéros : 06 – 16 – 28 – 35 – 41**
+**Numéros : 10 – 17 – 30 – 31 – 49**
 **Numéro chance : 05**
 
 ### Indicateurs de la grille
 
 - Score statistique interne : 100.0/100 (percentile du score composite parmi les 120 000 candidats générés — un score interne, pas une probabilité de gain)
-- Somme des numéros : 126
-- Pair/impair : 3/2
+- Somme des numéros : 137
+- Pair/impair : 2/3
 - Bas/haut : 2/3
 - Répartition par dizaines : 1-10: 1, 11-20: 1, 21-30: 1, 31-40: 1, 41-49: 1
-- Nombre de paires historiquement fréquentes (top décile) dans la grille : 5
+- Nombre de paires historiquement fréquentes (top décile) dans la grille : 4
 - Similarité avec le dernier tirage : 0 numéro(s) en commun
 
 ### Résultat du backtesting (rappel)
