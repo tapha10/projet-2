@@ -71,7 +71,7 @@ def fig_capture_curve():
     if not path.exists():
         return
     df = pd.read_csv(path)
-    hold_days = [1, 2, 3, 7, 14, 30, 60, 90]
+    hold_days = [1, 2, 3, 7, 14, 30, 60, 90, 180, 365]
     medians = [df[f"capture_{h}d"].median() for h in hold_days if f"capture_{h}d" in df]
     means = [df[f"capture_{h}d"].mean() for h in hold_days if f"capture_{h}d" in df]
     fig, ax = plt.subplots(figsize=(7, 4.5))
@@ -117,7 +117,7 @@ def fig_feature_importance():
     top = sub.groupby("feature")["mean_importance"].mean().sort_values(ascending=False).head(15)
     fig, ax = plt.subplots(figsize=(7, 5.5))
     top.sort_values().plot(kind="barh", ax=ax, color="#2ca02c")
-    ax.set_title("Top 15 features by mean ML importance (x10 @ 30d, Dataset B)")
+    ax.set_title("Top 15 features by mean ML importance (x10 @ 90d, Dataset B)")
     plt.tight_layout()
     plt.savefig(FIG_DIR / "feature_importance.png")
     plt.close()
@@ -134,7 +134,7 @@ def fig_ml_comparison():
     summary = sub.groupby("model")[["roc_auc", "pr_auc", "precision_top10pct"]].mean().sort_values("pr_auc", ascending=False)
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
     summary.plot(kind="bar", ax=ax)
-    ax.set_title("Model comparison -- x10 @ 30d (Dataset B, walk-forward)")
+    ax.set_title("Model comparison -- x10 @ 90d (Dataset B, walk-forward)")
     ax.set_ylabel("score")
     plt.xticks(rotation=20)
     plt.tight_layout()

@@ -180,11 +180,18 @@ def main():
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     all_res, all_imp = [], []
 
+    # (horizon_days, threshold) combos chosen from the observed positive-rate
+    # table: x5 already has enough positives at 30d, but x10 only reaches a
+    # workable sample size at the 90d horizon (documented in the report --
+    # this is itself a finding: x10 legs typically need more than 30 days to
+    # fully play out, see Step 8 duration analysis).
+    combos = [(30, 5), (90, 10)]
+
     pb = DATA_DIR / "candidate_panel_cb.parquet"
     if pb.exists():
         panel_b = pd.read_parquet(pb)
-        for thr in [5, 10]:
-            res, imp, fitted = run(panel_b, FEATURE_COLS_COMMON, "B_coinbase_multiyear", 30, thr)
+        for h, thr in combos:
+            res, imp, fitted = run(panel_b, FEATURE_COLS_COMMON, "B_coinbase_multiyear", h, thr)
             if len(res):
                 all_res.append(res)
                 all_imp.append(imp)
@@ -193,15 +200,15 @@ def main():
                     best_model_name = res.groupby("model")["pr_auc"].mean().idxmax()
                     last_fold_label = res["fold"].iloc[-1]
                     joblib.dump(fitted.get((best_model_name, last_fold_label)),
-                                MODELS_DIR / f"best_model_B_h30_x{thr}.joblib")
-                    with open(MODELS_DIR / f"best_model_B_h30_x{thr}.json", "w") as f:
+                                MODELS_DIR / f"best_model_B_h{h}_x{thr}.joblib")
+                    with open(MODELS_DIR / f"best_model_B_h{h}_x{thr}.json", "w") as f:
                         json.dump({"model_name": best_model_name, "features": FEATURE_COLS_COMMON}, f)
 
     pa = DATA_DIR / "candidate_panel.parquet"
     if pa.exists():
         panel_a = pd.read_parquet(pa)
-        for thr in [5, 10]:
-            res, imp, fitted = run(panel_a, FEATURE_COLS_COMMON + FEATURE_COLS_A_EXTRA, "A_coingecko_365d", 30, thr)
+        for h, thr in combos:
+            res, imp, fitted = run(panel_a, FEATURE_COLS_COMMON + FEATURE_COLS_A_EXTRA, "A_coingecko_365d", h, thr)
             if len(res):
                 all_res.append(res)
                 all_imp.append(imp)

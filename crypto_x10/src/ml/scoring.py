@@ -23,7 +23,7 @@ DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "processed"
 REPORTS_DIR = Path(__file__).resolve().parents[2] / "reports"
 
 TOP_K = 8
-HORIZON = 30
+HORIZON = 90  # matches ml/train.py and ml/score_oos.py (see rationale there)
 THRESHOLD = 10
 
 
@@ -68,10 +68,18 @@ def main():
     X = df[top_features].apply(pd.to_numeric, errors="coerce")
     y = df["label"]
 
-    # chronological split: train on all but the last calendar year, test on the last year
-    last_year = df["date"].dt.year.max()
+    # chronological split: train on all but the held-out year, test on it.
+    # Pick the most recent year with enough labelled rows AND at least one
+    # positive (the current, still-in-progress calendar year is typically
+    # too thin -- most of its candidates lack a full forward label window
+    # yet -- and can spuriously contain zero positives).
+    year_counts = df.groupby(df["date"].dt.year).agg(n=("label", "size"), pos=("label", "sum"))
+    eligible = year_counts[(year_counts["n"] >= 200) & (year_counts["pos"] >= 3)]
+    last_year = eligible.index.max() if len(eligible) else df["date"].dt.year.max()
     train_mask = df["date"].dt.year < last_year
     test_mask = df["date"].dt.year == last_year
+    print(f"Held-out test year for the score model: {last_year} "
+          f"(n={year_counts.loc[last_year, 'n']}, positives={year_counts.loc[last_year, 'pos']})")
 
     median = X[train_mask].median()
     X_train = X[train_mask].fillna(median)

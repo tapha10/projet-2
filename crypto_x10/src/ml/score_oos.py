@@ -19,7 +19,7 @@ from src.features.feature_list import FEATURE_COLS_COMMON
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "processed"
 
-HORIZON = 30
+HORIZON = 90  # x10 events only reach a workable positive-sample size at 90d (see train.py)
 THRESHOLD = 10
 
 

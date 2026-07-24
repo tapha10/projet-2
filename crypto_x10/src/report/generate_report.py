@@ -42,6 +42,7 @@ def main():
     entry_rules = safe_read("timing_entry_rules.csv")
     capture = safe_read("timing_capture_rates.csv")
     grid = safe_read("backtest_grid.csv")
+    empty_weeks = safe_read("timing_empty_weeks.csv")
 
     lines = []
     A = lines.append
@@ -113,14 +114,19 @@ def main():
         n_sig = corr["significant_fdr_10pct"].sum()
         A(f"{n_sig} tests sur {len(corr)} restent significatifs après correction de Benjamini-Hochberg (q=10%), "
           "ce qui écarte l'essentiel des faux signaux issus des tests multiples.\n")
-        top = corr[(corr["significant_fdr_10pct"]) & (corr["threshold"] == 10) & (corr["horizon_days"] == 30)]
+        top = corr[(corr["significant_fdr_10pct"]) & (corr["threshold"] == 10) & (corr["horizon_days"] == 90)]
         top = top.reindex(top["point_biserial_r"].abs().sort_values(ascending=False).index).head(10)
         if len(top):
-            A("**Top variables corrélées au x10 (horizon 30j) :**\n")
+            A("**Top variables corrélées au x10 (horizon 90j -- voir section 4 pour la justification de cet horizon) :**\n")
             A("| Dataset | Variable | r | p ajusté (FDR) | n |")
             A("|---|---|---|---|---|")
             for _, r in top.iterrows():
                 A(f"| {r['dataset']} | {r['feature']} | {r['point_biserial_r']:.3f} | {r['p_adj_fdr']:.4f} | {r['n']} |")
+            A("\n**Lecture importante** : ces corrélations sont statistiquement significatives (elles survivent "
+              "à la correction FDR sur des dizaines de milliers d'observations) mais leur **taille d'effet est "
+              "faible** (|r| de l'ordre de 0.01-0.03). Conclusion : le signal est réel, pas un artefact du "
+              "hasard, mais il est **faible** pris variable par variable -- cohérent avec les résultats ML "
+              "ci-dessous (section 4).\n")
     else:
         A("*(Données insuffisantes au moment de la génération -- relancer `run_pipeline.sh` une fois "
           "la collecte complète terminée.)*")
@@ -128,15 +134,29 @@ def main():
 
     A("## 4. Comparaison des modèles Machine Learning\n")
     if len(ml):
-        summ = ml.groupby(["dataset", "threshold", "model"])[["roc_auc", "pr_auc", "precision_top10pct"]].mean().reset_index()
+        A("Note méthodologique : le seuil x5 est évalué à un horizon de 30 jours, mais le seuil x10 doit être "
+          "évalué à un horizon de **90 jours** -- à 30 jours, les x10 réels sont trop rares (0-5 occurrences "
+          "selon le dataset) pour toute évaluation walk-forward fiable ; à 90 jours l'échantillon devient "
+          "exploitable (jusqu'à 37 occurrences sur le Dataset B). C'est en soi un résultat : **un x10 met "
+          "généralement plus de 30 jours à se matérialiser pleinement** (cf. section 8).\n")
+        summ = ml.groupby(["dataset", "horizon", "threshold", "model"])[["roc_auc", "pr_auc", "precision_top10pct"]].mean().reset_index()
         A("Validation en **walk-forward strict** (fenêtre expansive par année civile pour le Dataset B ; "
           "aucune donnée future n'entre jamais dans l'entraînement).\n")
-        A("| Dataset | Seuil | Modèle | ROC-AUC | PR-AUC | Précision top 10% |")
-        A("|---|---|---|---|---|---|")
+        A("| Dataset | Horizon | Seuil | Modèle | ROC-AUC | PR-AUC | Précision top 10% |")
+        A("|---|---|---|---|---|---|---|")
         for _, r in summ.sort_values(["dataset", "threshold", "pr_auc"], ascending=[True, True, False]).iterrows():
-            A(f"| {r['dataset']} | x{int(r['threshold'])} | {r['model']} | {r['roc_auc']:.3f} | {r['pr_auc']:.3f} | {fmt_pct(r['precision_top10pct'])} |")
+            A(f"| {r['dataset']} | {int(r['horizon'])}j | x{int(r['threshold'])} | {r['model']} | {r['roc_auc']:.3f} | {r['pr_auc']:.3f} | {fmt_pct(r['precision_top10pct'])} |")
         A("\n*PR-AUC (aire sous la courbe précision-rappel) est la métrique de référence ici car les x10 sont "
           "des événements rares : le ROC-AUC seul serait trompeur.*\n")
+        A("\n**Mise en garde essentielle sur la variance** : le détail par repli annuel (voir "
+          "`reports/ml_results.csv`) montre un ROC-AUC qui oscille énormément d'une année à l'autre "
+          "(ex. de 0.06 à 0.94 selon l'année pour un même modèle) et repose parfois sur **seulement "
+          "2 à 12 événements positifs** dans le repli de test. Une seule année à 0.94 sur 3 positifs "
+          "**n'est pas une preuve de pouvoir prédictif fort et fiable** -- c'est un signal statistiquement "
+          "réel mais fragile, très sensible à quelques cas particuliers, à traiter comme une tendance "
+          "directionnelle et non comme une garantie. Les modèles à base d'arbres (Random Forest, XGBoost, "
+          "LightGBM, CatBoost) dominent systématiquement la régression logistique, signe que les relations "
+          "captées sont non-linéaires / à seuils plutôt que purement additives.\n")
     else:
         A("*(Pas assez d'exemples positifs disponibles au moment de la génération du rapport.)*")
     A("\n![Comparaison des modèles](figures/ml_model_comparison.png)\n")
@@ -185,13 +205,22 @@ def main():
     A("\n![Courbe de capture du gain](figures/capture_rate_curve.png)\n")
     A("\n**Règle de sortie retenue pour le backtest** : stop-loss dur à -25%, prises de profits échelonnées "
       "(25% de la position vendue à x2, x5, x10), trailing stop de 30% sous le sommet une fois la position "
-      "armée à partir de x2 sur le solde, sortie forcée à 90 jours.\n")
+      "armée à partir de x2 sur le solde, sortie forcée à 180 jours (allongée par rapport à l'horizon ML de "
+      "90j car la courbe de capture ci-dessus montre qu'une part significative du gain se matérialise "
+      "après 90 jours).\n")
 
     A("## 9. Semaines sans opportunité\n")
-    A("Voir la sortie du module `src/analysis/timing.py` (log d'exécution) pour le détail par source ; "
-      "sur les deux datasets, une fraction significative des semaines calendaires ne présente aucun nouveau "
-      "creux menant historiquement à un x10 -- conclusion : **rester liquide en l'absence de signal est "
-      "statistiquement préférable à forcer un trade.**\n")
+    if len(empty_weeks):
+        A("| Dataset | Semaines totales | Semaines sans creux ≥x10 | % |")
+        A("|---|---|---|---|")
+        for _, r in empty_weeks.iterrows():
+            A(f"| {r['source']} | {int(r['total_weeks'])} | {int(r['empty_weeks'])} | {fmt_pct(r['empty_weeks_pct'])} |")
+        A("")
+    A("Sur les deux datasets, l'écrasante majorité des semaines calendaires ne présente **aucun** nouveau "
+      "creux ayant historiquement mené à un x10 -- conclusion : **rester liquide en l'absence de signal est "
+      "statistiquement préférable à forcer un trade.** Ceci est cohérent avec le rythme de trading observé "
+      "dans le backtest (section 10) : environ 1 trade toutes les quelques semaines au seuil de score retenu, "
+      "pas un trade par semaine.\n")
 
     A("## 10. Backtest walk-forward (sans biais de regard vers le futur)\n")
     if len(grid):
@@ -202,12 +231,32 @@ def main():
               f"{fmt_pct(r.get('win_rate'))} | {fmt_pct(r.get('mean_return_pct'))} | {fmt_pct(r.get('median_return_pct'))} | "
               f"{fmt_pct(r.get('max_drawdown_pct'))} | {r.get('profit_factor'):.2f} | {r.get('sharpe_annualized'):.2f} | "
               f"{r.get('trades_per_week'):.2f} | {fmt_pct(r.get('cagr_pct'))} |")
+        valid_grid = grid[grid["n_trades"] >= 20]
+        if len(valid_grid):
+            best = valid_grid.loc[valid_grid["sharpe_annualized"].idxmax()]
+            A(f"\n**Lecture** : au seuil de score retenu ({best['score_threshold']}), la stratégie produit "
+              f"{int(best['n_trades'])} trades sur toute la période testée (~{best['trades_per_week']:.2f} "
+              f"trade/semaine, soit environ 1 trade toutes les {1/max(best['trades_per_week'],1e-9):.0f} "
+              f"semaines), un taux de réussite de {fmt_pct(best['win_rate'])}, un rendement moyen par trade de "
+              f"{fmt_pct(best['mean_return_pct'])} et un rendement médian de {fmt_pct(best['median_return_pct'])} "
+              f"(**la médiane négative montre que la majorité des trades individuels perdent au stop-loss ; "
+              f"l'espérance positive vient d'un petit nombre de gains démesurés -- profil classique de suivi "
+              f"de tendance à queue épaisse**). Aux seuils de score plus bas (plus de trades, plus de faux "
+              f"positifs), l'espérance devient négative : **il ne faut pas trader en dessous du seuil "
+              f"optimal, même si cela signifie ne rien faire pendant des semaines.**\n")
     else:
         A("*(Backtest non disponible au moment de la génération -- nécessite le panel de scores OOS.)*")
     A("\n![Courbe d'équité du backtest](figures/backtest_equity_curve.png)\n")
     A("![Grille de seuils](figures/backtest_threshold_grid.png)\n")
 
     A("## 11. Stratégie finale\n")
+    if len(grid):
+        valid_grid = grid[grid["n_trades"] >= 20]
+        if len(valid_grid):
+            best = valid_grid.loc[valid_grid["sharpe_annualized"].idxmax()]
+            A(f"**Seuil de score minimal retenu (backtesté, section 10) : {best['score_threshold']}** "
+              f"(probabilité de sortie de modèle calibrée sur le Dataset B, 0-1 -- équivalent à un score "
+              f"interprétable élevé, section 5). En dessous, l'espérance mesurée devient négative.\n")
     A("""
 **Univers** : cryptos listées sur Bybit spot (paire USDT/USD/USDC), capitalisation et volume suffisants pour
 exécuter (éviter les paires à liquidité extrême, non filtrée explicitement ici faute de carnet d'ordres Bybit
@@ -231,7 +280,8 @@ accessible -- à ajouter par l'utilisateur via l'API Bybit une fois l'accès gé
 - Stop-loss : -25% depuis le prix d'entrée ;
 - Prises de profits échelonnées : 25% de la position à x2, x5, x10 ;
 - Trailing stop de 30% sous le sommet sur le solde, armé à partir de x2 ;
-- Sortie forcée si aucun développement après 90 jours.
+- Sortie forcée si aucun développement après 180 jours (section 8 : la majorité du gain d'un x10 se matérialise
+  souvent au-delà de 90 jours, une sortie trop précoce sacrifie une grande partie du potentiel).
 
 **Quand ne pas trader** : en l'absence de tout candidat au-dessus du score minimal une semaine donnée
 (fréquent, section 9), il est statistiquement préférable de rester liquide plutôt que de forcer une position

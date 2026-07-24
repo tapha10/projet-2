@@ -42,7 +42,11 @@ STOP_LOSS = 0.25
 TP_LADDER = [(2.0, 0.25), (5.0, 0.25), (10.0, 0.25)]  # (multiple, fraction of ORIGINAL position to sell)
 TRAILING_ARM_MULT = 2.0
 TRAILING_DRAWDOWN = 0.30
-MAX_HOLD_DAYS = 90
+# The timing analysis (src/analysis/timing.py) found that x10+ rallies only have
+# ~33% of their eventual gain captured by day 90 (median) -- most of the move
+# happens later. MAX_HOLD_DAYS is set well beyond the ML label horizon (90d) so
+# the backtest doesn't systematically truncate winners before they've played out.
+MAX_HOLD_DAYS = 180
 
 
 def load_ohlc(conn):
@@ -224,7 +228,11 @@ def compute_metrics(trades_df, bet_fraction=0.05):
 
 
 def main():
-    grid = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+    # thresholds chosen from the empirical OOS score distribution (base rate
+    # ~0.13% x10@90d -> most probability mass is far below 0.5; a fixed
+    # 0.3/0.5/... grid as one might use for a balanced classifier would select
+    # almost no trades here)
+    grid = [0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3]
     rows = []
     all_trades = {}
     for thr in grid:

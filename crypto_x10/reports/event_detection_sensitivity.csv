@@ -1,0 +1,7 @@
+source,reset_drawdown,n_events_x5,n_events_x10,n_events_x20
+coingecko_365d,0.2,21,1,0
+coingecko_365d,0.3,26,4,0
+coingecko_365d,0.4,25,6,0
+coinbase_full,0.2,36,3,0
+coinbase_full,0.3,67,9,1
+coinbase_full,0.4,73,21,8

@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.db.db import get_conn
 
 REPORTS_DIR = Path(__file__).resolve().parents[2] / "reports"
-HOLD_DAYS = [1, 2, 3, 7, 14, 30, 60, 90]
+HOLD_DAYS = [1, 2, 3, 7, 14, 30, 60, 90, 180, 365]
 
 
 def load_price_series(conn, coin_id, source):
@@ -139,6 +139,7 @@ def main(min_multiple=10):
 
     # weeks without opportunity
     print("\n--- Weeks without any qualifying (>=10x-eventual) trough, per source ---")
+    empty_week_rows = []
     for source in events["source"].unique():
         ev_s = events[events["source"] == source]
         min_d, max_d = ev_s["trough_date"].min(), ev_s["trough_date"].max()
@@ -148,6 +149,9 @@ def main(min_multiple=10):
         weeks_with_event = set(ev_s["trough_date"].dt.to_period("W"))
         n_empty = sum(1 for w in all_weeks if w not in weeks_with_event)
         print(f"  {source}: {n_empty}/{len(all_weeks)} weeks ({n_empty/len(all_weeks):.1%}) had ZERO new >= {min_multiple}x-eventual troughs")
+        empty_week_rows.append({"source": source, "total_weeks": len(all_weeks), "empty_weeks": n_empty,
+                                 "empty_weeks_pct": n_empty / len(all_weeks), "min_multiple": min_multiple})
+    pd.DataFrame(empty_week_rows).to_csv(REPORTS_DIR / "timing_empty_weeks.csv", index=False)
 
     conn.close()
 
