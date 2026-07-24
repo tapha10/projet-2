@@ -23,6 +23,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.db.db import get_conn
 from src.features.engineering import LOOKBACKS, LABEL_HORIZONS, MIN_LOOKBACK, STEP_DAYS, coin_age_days
+from src.features.feature_list import compute_narrative_dummies
 
 
 def build_universe_daily_stats_cb(price):
@@ -104,6 +105,7 @@ def main():
         genesis = crow["genesis_date"].iloc[0] if len(crow) else None
         rank = crow["market_cap_rank_current"].iloc[0] if len(crow) else np.nan
 
+        narr = compute_narrative_dummies(categories)
         n = len(feat)
         idxs = list(range(MIN_LOOKBACK, n, STEP_DAYS))
         rows = []
@@ -113,6 +115,7 @@ def main():
             row["categories"] = categories
             row["genesis_date"] = genesis
             row["market_cap_rank_current"] = rank
+            row.update(narr)
             rows.append(row)
         cand = pd.DataFrame(rows)
         if len(cand):

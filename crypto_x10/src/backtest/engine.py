@@ -160,13 +160,24 @@ def run_backtest(score_threshold, bet_fraction=0.05):
         open_coins[coin_id] = trade["exit_date"]
 
     conn.close()
+    if not trades:
+        return pd.DataFrame(columns=["coin_id", "signal_date", "signal_score", "entry_date", "entry_price",
+                                      "exit_date", "exit_reason", "realized_multiple", "trade_return_pct", "hold_days"])
     trades_df = pd.DataFrame(trades).sort_values("exit_date").reset_index(drop=True)
     return trades_df
 
 
+EMPTY_METRICS = {
+    "n_trades": 0, "win_rate": np.nan, "mean_return_pct": np.nan, "median_return_pct": np.nan,
+    "max_drawdown_pct": np.nan, "profit_factor": np.nan, "sharpe_annualized": np.nan,
+    "expectancy_pct_per_trade": np.nan, "trades_per_week": np.nan, "cagr_pct": np.nan,
+    "final_equity_multiple": np.nan,
+}
+
+
 def compute_metrics(trades_df, bet_fraction=0.05):
     if not len(trades_df):
-        return {}
+        return dict(EMPTY_METRICS)
     r = trades_df["trade_return_pct"]
     equity = [1.0]
     for ret in r:

@@ -5,3 +5,4 @@ crypto_x10/data/db/*.sqlite
 crypto_x10/data/db/*.sqlite-shm
 crypto_x10/data/db/*.sqlite-wal
 crypto_x10/logs/*.log
+crypto_x10/catboost_info/

@@ -32,6 +32,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.db.db import get_conn
+from src.features.feature_list import compute_narrative_dummies
 
 LOOKBACKS = [1, 2, 3, 7, 14, 30]   # days = 24h/48h/72h/7d/14d/30d
 LABEL_HORIZONS = [14, 30, 90]
@@ -183,6 +184,7 @@ def main():
         genesis = crow["genesis_date"].iloc[0] if len(crow) else None
         rank = crow["market_cap_rank_current"].iloc[0] if len(crow) else np.nan
         coin_static = {"categories": categories, "genesis_date": genesis, "market_cap_rank_current": rank}
+        coin_static.update(compute_narrative_dummies(categories))
 
         cand = build_candidates(feat, coin_id, coin_static)
         cand["coin_age_days"] = cand["date"].apply(lambda t: coin_age_days(genesis, t))

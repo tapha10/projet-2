@@ -28,8 +28,12 @@ THRESHOLD = 10
 
 
 def select_top_features(corr_csv, imp_csv, dataset="B_coinbase_multiyear", k=TOP_K):
+    if not (Path(corr_csv).exists() and Path(imp_csv).exists()):
+        return [], pd.DataFrame(), pd.DataFrame()
     corr = pd.read_csv(corr_csv)
     imp = pd.read_csv(imp_csv)
+    if not len(corr) or not len(imp):
+        return [], pd.DataFrame(), pd.DataFrame()
 
     c = corr[(corr["dataset"] == dataset) & (corr["horizon_days"] == HORIZON) & (corr["threshold"] == THRESHOLD)]
     c_rank = c.assign(absr=c["point_biserial_r"].abs()).sort_values("absr", ascending=False)
@@ -56,6 +60,10 @@ def main():
     imp_csv = REPORTS_DIR / "feature_importance.csv"
     top_features, c_rank, i_rank = select_top_features(corr_csv, imp_csv)
     print(f"Top {len(top_features)} features selected for the interpretable score: {top_features}")
+    if not top_features:
+        print("No ML importance results available yet for the x10@30d target on Dataset B "
+              "(insufficient positive examples so far) -- run again once data collection is complete.")
+        return
 
     X = df[top_features].apply(pd.to_numeric, errors="coerce")
     y = df["label"]

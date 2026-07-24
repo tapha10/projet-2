@@ -112,7 +112,7 @@ def run(panel, feature_cols, dataset_name, horizon, threshold, fold_mode="expand
     if n_pos < 8:
         print("Too few positive examples for reliable walk-forward evaluation -- skipping ML, "
               "will be reported as a data-availability limitation instead.")
-        return pd.DataFrame(), {}
+        return pd.DataFrame(), pd.DataFrame(), {}
 
     if fold_mode == "expanding_year" and df["date"].dt.year.nunique() >= 3:
         years = sorted(df["date"].dt.year.unique())
