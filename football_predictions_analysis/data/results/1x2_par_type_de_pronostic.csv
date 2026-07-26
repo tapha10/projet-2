@@ -1,0 +1,4 @@
+regle,n,gagnants,taux_reussite,ic95_bas,ic95_haut
+Pronostic = victoire domicile,173,104,60.1%,52.7%,67.1%
+Pronostic = victoire extérieur,83,43,51.8%,41.2%,62.2%
+Pronostic = match nul,37,7,18.9%,9.5%,34.2%
