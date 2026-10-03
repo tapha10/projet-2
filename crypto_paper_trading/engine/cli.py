@@ -18,7 +18,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-from . import announcements, early, indicators, market, risk, simulate, stats
+from . import announcements, early, indicators, market, recap, risk, simulate, stats
 from .sqlgen import load_json_loose, q, qarr, qts
 
 ARMS = ("A", "B", "C")
@@ -507,7 +507,20 @@ def cmd_decide(a):
         summary.append(f"- {d['pair']} : {d['decision'].upper()} (score {d['score']}) — {d['reason']}"
                        + (f" -> bras {', '.join(x for x, _ in psqls)}" if psqls else "")
                        + (f" | {note2}" if note2 else ""))
-    write(a.out, "\n".join(blocks) if blocks else "select 'aucune décision' as info;\n")
+    modes = {}
+    for c in cd.get("candidates", []):
+        for m in c.get("detection_modes") or ["momentum"]:
+            modes[m] = modes.get(m, 0) + 1
+    dec_count = {}
+    for d in decisions:
+        dec_count[d["decision"]] = dec_count.get(d["decision"], 0) + 1
+    blocks.append(  # résumé du passage, pour le récapitulatif (ce que le système a vu)
+        "insert into iteration_log(routine, change, rationale, evidence) values ('analyse', "
+        + q(dict(action="scan_summary", status="ok", modes=modes, decisions=dec_count)) + ", "
+        + q(f"Passage d'analyse : {len(cd.get('candidates', []))} candidat(s), {len(cd.get('waits', []))} attente(s) réévaluée(s).")
+        + ", " + q(dict(early_detection=cd.get("early_detection"), n_candidates=len(cd.get("candidates", [])),
+                       n_waits=len(cd.get("waits", [])), n_errors=len(cd.get("errors", [])))) + ");\n")
+    write(a.out, "\n".join(blocks))
     print("Décisions du jour :\n" + ("\n".join(summary) if summary else "- aucun candidat"))
 
 
@@ -920,13 +933,59 @@ def cmd_report(a):
     L.append("> **DÉMO UNIQUEMENT.** Aucun ordre réel n'a été passé. Les résultats simulés ignorent une partie "
              "du glissement réel (0,1 % forfaitaire seulement), de la profondeur du carnet et du funding réel "
              "(estimé à 0,01 %/8 h). Aucun résultat n'est garanti.\n")
+    intro = ""
     if a.intro:
         try:
             intro = open(a.intro, encoding="utf-8").read().strip()
         except OSError:
             intro = ""
-        if intro:
-            L.append("## Lecture de la semaine\n\n" + intro + "\n")
+    r6 = tdata = None
+    if getattr(a, "tiers_data", None):
+        from . import cli2ter
+        tdata = load_json_loose(a.tiers_data)
+        try:
+            r6 = cli2ter.r6_compute(dict(tdata, last_r5=dict(created_at=iso(now), change={"status": "ok"})), now, "weekly")
+        except Exception:
+            r6 = None
+    # en bref (vue simple de la semaine)
+    eq_by_arm = {arm: cap0 + sum(float(p["pnl_usd"] or 0) for p in closed if p["arm"] == arm) for arm in ARMS}
+    ts = cfgv(cfg, "tier_state", {}) or {}
+    tiers_line = None
+    if ts:
+        up = [t for t, v in ts.items() if (v or {}).get("status") == "unlocked"]
+        tiers_line = (f"Paliers : {', '.join(up) or 'aucun'} actif(s) ; "
+                      f"{', '.join(t for t in ts if t not in up) or 'aucun'} en ombre (mesurés sans capital).")
+    L += recap.brief(week_sig, week_closed, [p for p in pos if p["status"] == "open"], eq_by_arm, tiers_line)
+    dec_w = {k: sum(1 for x in week_sig if x.get("decision") == k) for k in ("enter", "wait", "skip")}
+    if not week_sig:
+        no_entry = "aucun candidat détecté cette semaine."
+    elif dec_w["enter"] == 0:
+        no_entry = (f"{dec_w['skip']} signal(s) écarté(s) et {dec_w['wait']} en attente — aucun n'a passé les filtres "
+                    "(détail section 3 ter).")
+    else:
+        no_entry = "les signaux entrés n'ont pas été ouverts dans ce bras (plafond atteint)."
+    arm_desc = {"A": "stop −25 % / +40 %, levier 2x", "B": "stop −12 % / +40 %, stop à l'entrée dès +15 %",
+                "C": "stop 1,5 x ATR (10-25 %) / 2,5 R, suiveur après +20 %"}
+    arms_g = {}
+    for arm in ARMS:
+        st_arm = [p for p in pos if p["arm"] == arm]
+        peak = cap0
+        eqx = cap0
+        for p in sorted([p for p in closed if p["arm"] == arm], key=lambda p: stats.parse_ts(p["closed_at"])):
+            eqx += float(p["pnl_usd"] or 0)
+            peak = max(peak, eqx)
+        arms_g[f"Bras {arm}"] = dict(desc=arm_desc[arm], open=sum(1 for p in st_arm if p["status"] == "open"),
+                                    closed_week=sum(1 for p in week_closed if p["arm"] == arm),
+                                    pnl_week=sum(float(p["pnl_usd"] or 0) for p in week_closed if p["arm"] == arm),
+                                    halted=peak > 0 and (peak - eqx) / peak > 0.15)
+    tpos = [p for p in h["positions"] if p.get("arm") == "T"]
+    t_week = [p for p in tpos if p["status"] == "closed" and stats.parse_ts(p["closed_at"]) >= wk0]
+    t_book = dict(desc="stop 8-12 % / 2,5 R, tranches, levier ≤ 3x", open=sum(1 for p in tpos if p["status"] == "open"),
+                  closed_week=len(t_week), pnl_week=sum(float(p["pnl_usd"] or 0) for p in t_week), halted=False)
+    L += recap.glance(arms_g, t_book, (r6 or {}).get("per_tier"), no_entry)
+    L.append("")
+    if intro:
+        L.append("## Lecture de la semaine\n\n" + intro + "\n")
     # capital
     L.append("## 1. Capital virtuel\n")
     L.append("Chaque bras est un portefeuille virtuel séparé de "
@@ -1006,12 +1065,13 @@ def cmd_report(a):
         L.append(f"| {label} | {len(ss)} | {dec[0]} / {dec[1]} / {dec[2]} | {m['n']} | {fmt(m.get('avg_r'))} | "
                  f"{fmt_pct(stats.mean(g))} (n={len(g)}) | {fmt_pct(stats.mean(dd))} |")
     L.append("\nLe gain et la baisse max à 10 jours sont mesurés sur **tous** les signaux, même non pris : "
-             "c'est ce qui dira si un mode arrive plus tôt dans la hausse. "
-             + stats.sample_warning(min(v["n_outcomes"] for v in mode_stats.values())))
+             "c'est ce qui dira si un mode arrive plus tôt dans la hausse. Prudence : "
+             + stats.sample_warning(min(v["n_outcomes"] for v in mode_stats.values())) + ".")
     metrics["by_detection_mode"] = mode_stats
     # avance du signal
     leads = [(stats.parse_ts(s["rise_started_at"]) - stats.parse_ts(s["info_published_at"])) / 3600
              for s in sig if s.get("info_published_at") and s.get("rise_started_at")]
+    L += recap.funnel(week_sig, recap.scan_rows(h.get("iteration_log", []), wk0), 0)
     L.append("\n## 4. Avance du signal\n")
     L.append(f"Avance moyenne entre la première info publiée et le début de la hausse : "
              f"{fmt(stats.mean(leads), 1)} h sur {len(leads)} signaux mesurés "
@@ -1021,7 +1081,8 @@ def cmd_report(a):
     dec = {}
     for s in week_sig:
         dec[s["decision"]] = dec.get(s["decision"], 0) + 1
-    L.append(f"\nDécisions de la semaine : {dec or 'aucune'}.\n")
+    L.append("\nDécisions de la semaine : " + (", ".join(f"{v} {recap.DECISION_FR.get(k, k)}" for k, v in dec.items())
+                                               if dec else "aucune") + ".\n")
     metrics["week_decisions"] = dec
     # changements
     L.append("## 5. Changements de stratégie\n")
@@ -1076,9 +1137,8 @@ def cmd_report(a):
                 if n_min < 100 else
                 "Même avec un échantillon correct, un passage au réel exigerait une relecture de GUARDRAILS.md "
                 "avec vous et un test à très petite taille ; ce système reste en démo."))
-    if getattr(a, "tiers_data", None):
-        from . import cli2ter
-        L.append("\n" + cli2ter.report_section(load_json_loose(a.tiers_data)))
+    if tdata is not None:
+        L.append("\n" + cli2ter.report_section(tdata, r6))
     md = "\n".join(L) + "\n"
     write(a.out, md)
     metrics["generated_at"] = iso(now)

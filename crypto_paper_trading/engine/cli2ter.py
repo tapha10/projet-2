@@ -326,7 +326,8 @@ def build_events(data):
         outs = {k: v for k, v in sh.get(s["id"], {}).items() if v.get("complete") and v.get("r") is not None}
         rows.append(dict(id=s["id"], pair=s["pair"], ts=stats.parse_ts(s["detected_at"]),
                          criteria=f.get("criteria") or {}, outcomes=outs,
-                         split_r=(f.get("outcomes") or {}).get("split_r") or {}))
+                         split_r=((f.get("outcomes") or {}).get("split_r") or {})
+                         if (f.get("outcomes") or {}).get("complete") else {}))
     return features.cluster_events(rows)
 
 
@@ -449,7 +450,8 @@ def report_section(data, r6=None):
     if r6.get("read_only"):
         L.append("> Routine 6 en **lecture seule** (7 premiers jours) : constats uniquement, aucune décision de palier.\n")
         week = [p for p in data.get("tier_positions", []) if stats.parse_ts(p["opened_at"]) >= now - 7 * DAY]
-        would = [f"{d['tier']} : {d['action']}" for d in r6.get("decisions", [])]
+        from .recap import ACTION_FR
+        would = [f"{d['tier']} : {ACTION_FR.get(d['action'], d['action'])}" for d in r6.get("decisions", [])]
         L.append(f"Comparaison lecture seule : cette semaine, la routine 1 a ouvert {len(week)} position(s) du "
                  f"portefeuille T (palier P1 seul actif) ; la routine 6 aurait décidé : "
                  f"{', '.join(would) if would else 'rien'}.\n")
@@ -465,7 +467,8 @@ def report_section(data, r6=None):
     if r6["top"]:
         L.append("| Palier | Critère | n avec | Lift | p corrigée (BH) | Statut |\n|---|---|---|---|---|---|")
         for t in r6["top"]:
-            L.append(f"| {t['tier']} | {t['criterion']} | {t['n_with']} | {t['lift']:+.2f} | {t['p_adj']:.3f} | {t['status']} |")
+            from .recap import crit_fr
+            L.append(f"| {t['tier']} | {crit_fr(t['criterion'])} | {t['n_with']} | {t['lift']:+.2f} | {t['p_adj']:.3f} | {t['status']} |")
     else:
         L.append("Aucun critère testable pour l'instant (il faut des signaux avec résultats complets).")
     sc = r6["split_cmp"]
@@ -491,7 +494,8 @@ def next_experiment(r6):
     hyp = [t for t in r6.get("tests", []) if t["status"] == "hypothèse" and (t["lift"] or 0) >= 0.10]
     if hyp:
         t = max(hyp, key=lambda t: t["lift"])
-        return (f"suivre en priorité « {t['criterion']} » sur {t['tier']} (lift {t['lift']:+.2f} sur {t['n_with']} "
+        from .recap import crit_fr
+        return (f"suivre en priorité « {crit_fr(t['criterion'])} » sur {t['tier']} (lift {t['lift']:+.2f} sur {t['n_with']} "
                 f"événements, il en faut 30) en enrichissant la collecte des signaux qui le vérifient.")
     if r6["n_events"] < 40:
         return "accumuler des événements indépendants (élargir la collecte des candidats, y compris les skip)."
