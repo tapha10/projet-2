@@ -169,29 +169,32 @@ def pos_from_row(p):
     return pos
 
 
-def check_t(st, now, fetch, fee, fund, slip):
+def check_t(st, now, fetch, fee, fund, slip, refine=None, funding=None):
     """Suivi des positions du portefeuille T (tranches). Renvoie (sql, lignes, pnl latent)."""
     sql, lines, unreal = [], [], 0.0
     for p in [x for x in st.get("open_positions", []) if x["arm"] == "T"]:
         pos = pos_from_row(p)
-        since = stats.parse_ts(p.get("last_checked_at") or p["opened_at"])
+        pos["through"] = stats.parse_ts(p["sim_through_at"]) if p.get("sim_through_at") else None
         try:
-            rows = fetch(p["pair"], "15m", max(pos["opened_ts"], since) - 900, now)
+            rows = fetch(p["pair"], "15m", (pos["through"] or pos["opened_ts"]) - 900, now)
         except Exception as e:
             sql.append(f"insert into price_checks(position_id, note) values ({p['id']}, {q('ERREUR données : ' + str(e)[:200])});")
             lines.append(f"- #{p['id']} T {p['pair']} : données indisponibles")
             continue
-        rows = [r for r in rows if r["t"] >= pos["opened_ts"] - 1]
-        ev = tiers.step_tranches(pos, rows, slip, 900)
+        ev = tiers.step_tranches(pos, rows, slip, 900, refine=refine and refine(p["pair"]), now=now)
         last = rows[-1]["c"] if rows else None
-        res = tiers.settle(pos, fee, fund, last, now)
         all_closed = all(d["status"] != "open" for d in pos["tranches"].values())
+        rates = None
+        if all_closed and funding:
+            rates = funding(p["pair"], pos["opened_ts"], now)
+        res = tiers.settle(pos, fee, fund, last, now, rates)
         meta = dict(p.get("tranches") or {})
         meta["tranches"] = pos["tranches"]
         common = (f"stop_price={q(max(pos['stop_price'], float(p['stop_price'])))}, highest_price={q(pos['highest'])}, "
                   f"lowest_price={q(pos['lowest'])}, mfe_pct={q(res['mfe_pct'])}, mae_pct={q(res['mae_pct'])}, "
                   f"mfe_r={q(res['mfe_r'])}, time_to_peak_h={q(res['time_to_peak_h'])}, "
-                  f"peak_at={qts(pos['peak_ts'])}, tranches={q(meta)}, last_checked_at={qts(now)}")
+                  f"peak_at={qts(pos['peak_ts'])}, tranches={q(meta)}, sim_through_at={qts(pos['through'])}, "
+                  f"last_checked_at={qts(now)}")
         if all_closed:
             closed_ts = max(d.get("exit_ts") or 0 for d in pos["tranches"].values() if d["share"] > 0)
             reasons = "+".join(f"{k}:{d['exit_reason']}" for k, d in pos["tranches"].items() if d["share"] > 0)
@@ -212,6 +215,9 @@ def check_t(st, now, fetch, fee, fund, slip):
             lines.append(f"- #{p['id']} T {p['pair']} : ouverte, stop {pos['stop_price']:.6g}, "
                          f"tranches fermées {done or 'aucune'}")
         note = ("tranches " + ", ".join(f"{e[0]}:{e[1]}" for e in ev)) if ev else "palier T"
+        if pos.get("audit"):
+            from .cli import audit_note
+            note += " | " + audit_note(pos["audit"])
         sql.append(f"insert into price_checks(position_id, last_price, note) values ({p['id']}, {q(last)}, {q(note)});")
     return sql, lines, unreal
 

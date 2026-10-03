@@ -59,7 +59,7 @@ Le serveur peut décaler l'heure de quelques minutes pour répartir la charge.
 - `sql/003_engine_support.sql` — colonnes du moteur et `paper_record_daily()`.
 - `engine/` — Python standard (aucune dépendance) :
   `market.py` (Gate → OKX → MEXC → KuCoin), `risk.py` (stop / objectif / taille / levier),
-  `simulate.py` (bougie par bougie, stop d'abord), `stats.py` (métriques, bootstrap,
+  `simulate.py` (bougie par bougie, affinage 1 min, stop d'abord si l'ordre reste inconnu), `stats.py` (métriques, bootstrap,
   walk-forward), `cli.py` (commandes des routines), `import_reference.py` (cas historiques).
 - `tests/` — `python3 -m unittest discover -s tests` (hors réseau).
 
@@ -96,7 +96,8 @@ Gate sont exclus. Les annonces, unlocks et transferts viennent de la recherche w
 
 ## Limites connues
 
-- Démo : glissement forfaitaire 0,1 %, frais 0,05 %/côté, funding estimé 0,01 %/8 h.
+- Démo : glissement forfaitaire 0,1 %, frais 0,055 %/côté (Bybit), funding réel Gate (pas Bybit),
+  prix Gate/OKX et non Bybit (Bybit bloqué depuis le cloud) ; voir `docs/audit_bougies.md`.
 - Échantillon de départ minuscule et biaisé (4 cas, uniquement des hausses).
 - La qualité des signaux « annonces » dépend de la recherche web de la routine.
 - Les routines sont des agents : une routine peut échouer (source bloquée, quota) ;

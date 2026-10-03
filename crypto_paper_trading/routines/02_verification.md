@@ -31,13 +31,15 @@
    ```bash
    python3 -m engine.cli check --tiers --state $W/state.json --out $W/check.sql [--daily]
    ```
-   Le moteur récupère pour chaque position ouverte les bougies de **15 minutes** depuis
-   `last_checked_at` (plus hauts et plus bas), et détecte dans l'ordre chronologique :
-   liquidation estimée / stop, objectif (stop d'abord si les deux sont dans la même
-   bougie), passage à l'équilibre, stop suiveur, durée maximale (10 jours). Il calcule
-   `exit_price`, `exit_reason`, `pnl_usd`, `pnl_pct`, `r_multiple`, `fees_usd`
-   (0,05 % par côté), funding estimé, `mfe_pct`, `mae_pct`, et prépare une ligne
-   `price_checks` par position.
+   Le moteur récupère pour chaque position ouverte les bougies de **15 minutes fermées**
+   après `sim_through_at` (chaque bougie n'est traitée qu'une fois), rejoue en **bougies de
+   1 minute** la bougie d'entrée et toute bougie où un niveau est touché, et détecte dans
+   l'ordre chronologique : liquidation estimée / stop, objectif (stop d'abord seulement si
+   l'ordre reste inconnu à la minute), passage à l'équilibre, stop suiveur, durée maximale
+   (10 jours). Il calcule `exit_price`, `exit_reason`, `pnl_usd`, `pnl_pct`, `r_multiple`,
+   `fees_usd` (0,055 % par côté), funding réellement réglé (Gate), `mfe_pct`, `mae_pct`,
+   met à jour `sim_through_at` et prépare une ligne `price_checks` par position (la note
+   dit combien de bougies ont été rejouées en 1 min et la source du funding).
    **Addendum 2ter (`--tiers`)** : les positions du portefeuille T sont suivies en tranches :
    tranche A (2,5 R), B (6 R), C (coureur, stop chandelier 3 x ATR) ; après la sortie de A,
    le stop du solde passe à l'entrée ; il remplit R, MFE (en % et en R), MAE et temps jusqu'au pic.

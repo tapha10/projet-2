@@ -546,6 +546,33 @@ def pos_state(p):
         lowest=entry * (1 + float(p.get("mae_pct") or 0)), stop_kind=kind)
 
 
+def fine_fetch(pair, sources):
+    """Bougies 1 min pour trancher l'ordre des prix dans une bougie 15 min."""
+    return lambda t0, t1: market.fine_candles(pair, t0, t1, sources)[0]
+
+
+def funding_rates(pair, start, end):
+    """Funding réellement réglé (Gate) ; None -> estimation forfaitaire de la config."""
+    try:
+        return market.funding_history(pair, start, end)[0], "réel gate"
+    except Exception:
+        return None, "estimé (forfait)"
+
+
+def audit_note(audit):
+    fine = sum(1 for a in audit if a[0] == "1m")
+    prudent = sum(1 for a in audit if a[0] == "prudent")
+    both = sum(1 for a in audit if a[0] == "stop_et_objectif_meme_bougie")
+    out = []
+    if fine:
+        out.append(f"{fine} bougie(s) 15 min rejouée(s) en 1 min")
+    if prudent:
+        out.append(f"{prudent} bougie(s) sans 1 min : stop d'abord")
+    if both:
+        out.append("stop et objectif dans la même bougie : stop retenu")
+    return ", ".join(out)
+
+
 def cmd_check(a):
     st = load_json_loose(a.state)
     cfg = st["config"]
@@ -560,8 +587,8 @@ def cmd_check(a):
         if p["arm"] == "T":
             continue  # portefeuille des paliers : suivi en tranches par cli2ter.check_t
         ps = pos_state(p)
-        since = stats.parse_ts(p.get("last_checked_at") or p["opened_at"])
-        start = max(ps.opened_ts, since) - simulate.CANDLE_SECONDS
+        ps.through = stats.parse_ts(p["sim_through_at"]) if p.get("sim_through_at") else None
+        start = (ps.through or ps.opened_ts) - simulate.CANDLE_SECONDS
         try:
             rows, src = market.candles(p["pair"], "15m", start, now, sources)
         except Exception as e:
@@ -569,23 +596,25 @@ def cmd_check(a):
                        f"{q('ERREUR données : ' + str(e)[:300])});")
             lines.append(f"- #{p['id']} {p['arm']} {p['pair']} : données indisponibles, position laissée ouverte")
             continue
-        rows = [r for r in rows if r["t"] >= ps.opened_ts - 1]
-        hi = max((r["h"] for r in rows), default=None)
-        lo = min((r["l"] for r in rows), default=None)
+        new = [r for r in rows if r["t"] + simulate.CANDLE_SECONDS > (ps.through or ps.opened_ts)]
+        hi = max((r["h"] for r in new), default=None)
+        lo = min((r["l"] for r in new), default=None)
         last = rows[-1]["c"] if rows else None
-        res = simulate.step(ps, rows, slip)
+        res = simulate.step(ps, rows, slip, refine=fine_fetch(p["pair"], sources), now=now)
         if res is None and now >= ps.max_hold_ts and last is not None:
             res = dict(exit_price=last * (1 - slip), exit_reason="time", exit_ts=now)
-        ev = "; ".join(str(e[0]) for e in ps.events)
+        ev = "; ".join([str(e[0]) for e in ps.events] + [audit_note(ps.audit)] * bool(ps.audit))
         if res:
-            r = simulate.pnl(ps, res["exit_price"], res["exit_ts"], res["exit_reason"], fee, fund)
+            rates, fsrc = funding_rates(p["pair"], ps.opened_ts, res["exit_ts"])
+            r = simulate.pnl(ps, res["exit_price"], res["exit_ts"], res["exit_reason"], fee, fund, rates)
+            ev = (ev + f"; funding {fsrc}").strip("; ")
             sql.append(
                 f"update positions set status='closed', closed_at={qts(min(res['exit_ts'], now))}, "
                 f"exit_price={q(res['exit_price'])}, exit_reason={q(res['exit_reason'])}, "
                 f"pnl_usd={q(r['pnl_usd'])}, pnl_pct={q(r['pnl_pct'])}, r_multiple={q(r['r_multiple'])}, "
                 f"fees_usd={q(r['fees_usd'])}, funding_usd={q(r['funding_usd'])}, mfe_pct={q(r['mfe_pct'])}, "
                 f"mae_pct={q(r['mae_pct'])}, highest_price={q(ps.highest)}, stop_price={q(ps.stop)}, "
-                f"last_checked_at={qts(now)} where id={p['id']} and status='open';")
+                f"sim_through_at={qts(ps.through)}, last_checked_at={qts(now)} where id={p['id']} and status='open';")
             note = f"CLÔTURE {res['exit_reason']} à {res['exit_price']:.6g} ({src}) {ev}".strip()
             lines.append(f"- #{p['id']} {p['arm']} {p['pair']} : FERMÉE ({res['exit_reason']}) "
                          f"PnL {r['pnl_usd']:+.2f} USDT, R={r['r_multiple']}")
@@ -596,7 +625,8 @@ def cmd_check(a):
             sql.append(
                 f"update positions set stop_price={q(ps.stop)}, highest_price={q(ps.highest)}, "
                 f"mfe_pct={q(round(ps.highest / ps.entry - 1, 6))}, "
-                f"mae_pct={q(round(ps.lowest / ps.entry - 1, 6))}, last_checked_at={qts(now)} "
+                f"mae_pct={q(round(ps.lowest / ps.entry - 1, 6))}, sim_through_at={qts(ps.through)}, "
+                f"last_checked_at={qts(now)} "
                 f"where id={p['id']} and status='open';")
             note = f"ouverte ({src}) {ev}".strip()
             lines.append(f"- #{p['id']} {p['arm']} {p['pair']} : ouverte, dernier {last}, "
@@ -605,7 +635,10 @@ def cmd_check(a):
                    f"values ({p['id']}, {q(last)}, {q(hi)}, {q(lo)}, {q(note)});")
     if a.tiers:
         from . import cli2ter
-        sql_t, lines_t, unreal["T"] = cli2ter.check_t(st, now, cli2ter.default_fetch(sources), fee, fund, slip)
+        sql_t, lines_t, unreal["T"] = cli2ter.check_t(
+            st, now, cli2ter.default_fetch(sources), fee, fund, slip,
+            refine=lambda pair: fine_fetch(pair, sources),
+            funding=lambda pair, t0, t1: funding_rates(pair, t0, t1)[0])
         sql += sql_t
         lines += lines_t
     if a.daily:
@@ -931,8 +964,8 @@ def cmd_report(a):
     L = []
     L.append(f"# Rapport hebdomadaire — paper trading crypto (semaine du {week_start.isoformat()})\n")
     L.append("> **DÉMO UNIQUEMENT.** Aucun ordre réel n'a été passé. Les résultats simulés ignorent une partie "
-             "du glissement réel (0,1 % forfaitaire seulement), de la profondeur du carnet et du funding réel "
-             "(estimé à 0,01 %/8 h). Aucun résultat n'est garanti.\n")
+             "du glissement réel (0,1 % forfaitaire seulement) et de la profondeur du carnet ; prix et funding "
+             "viennent de Gate/OKX, pas de Bybit. Aucun résultat n'est garanti.\n")
     intro = ""
     if a.intro:
         try:
@@ -1127,8 +1160,8 @@ def cmd_report(a):
     # conclusion
     n_min = min(metrics["by_arm"][x]["n"] for x in ARMS)
     L.append("\n## 8. Limites et recommandation\n")
-    L.append("- Démo : glissement, profondeur de marché et funding réels partiellement ignorés ; les prix viennent "
-             "de sources publiques (Gate.io en priorité, puis OKX, MEXC, KuCoin).")
+    L.append("- Démo : glissement réel et profondeur de marché ignorés (forfait 0,1 %) ; prix, bougies 1 min et "
+             "funding viennent de sources publiques (Gate.io en priorité, puis OKX, MEXC, KuCoin), pas de Bybit.")
     L.append("- Échantillon de départ biaisé (4 cas, uniquement des hausses) : le vrai taux de réussite est ce que "
              "ce système mesure.")
     L.append(f"- Plus petit nombre de trades fermés par bras : **{n_min}**. "

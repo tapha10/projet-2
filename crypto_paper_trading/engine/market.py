@@ -17,7 +17,7 @@ import urllib.request
 
 UA = {"User-Agent": "Mozilla/5.0 (paper-trading-research; read-only)"}
 DEFAULT_SOURCES = ("gate", "okx", "mexc", "kucoin")
-INTERVAL_SECONDS = {"15m": 900, "1h": 3600, "1d": 86400}
+INTERVAL_SECONDS = {"1m": 60, "15m": 900, "1h": 3600, "1d": 86400}
 
 
 class DataError(RuntimeError):
@@ -71,7 +71,7 @@ def _gate_candles(base, interval, start, end):
 
 
 def _okx_candles(base, interval, start, end):
-    bar = {"15m": "15m", "1h": "1H", "1d": "1Dutc"}[interval]
+    bar = {"1m": "1m", "15m": "15m", "1h": "1H", "1d": "1Dutc"}[interval]
     out, after = [], int(end * 1000) + 1
     for _ in range(60):
         q = urllib.parse.urlencode({"instId": f"{base}-USDT-SWAP", "bar": bar,
@@ -90,7 +90,7 @@ def _okx_candles(base, interval, start, end):
 
 
 def _mexc_candles(base, interval, start, end):
-    iv = {"15m": "Min15", "1h": "Min60", "1d": "Day1"}[interval]
+    iv = {"1m": "Min1", "15m": "Min15", "1h": "Min60", "1d": "Day1"}[interval]
     q = urllib.parse.urlencode({"interval": iv, "start": int(start), "end": int(end)})
     data = http_json(f"https://contract.mexc.com/api/v1/contract/kline/{base}_USDT?{q}")
     d = data.get("data") or {}
@@ -100,7 +100,7 @@ def _mexc_candles(base, interval, start, end):
 
 
 def _kucoin_candles(base, interval, start, end):
-    gran = {"15m": 15, "1h": 60, "1d": 1440}[interval]
+    gran = {"1m": 1, "15m": 15, "1h": 60, "1d": 1440}[interval]
     sym = ("XBT" if base == "BTC" else base) + "USDTM"
     q = urllib.parse.urlencode({"symbol": sym, "granularity": gran,
                                 "from": int(start * 1000), "to": int(end * 1000)})
@@ -130,6 +130,22 @@ def candles(pair, interval, start, end=None, sources=DEFAULT_SOURCES):
             return [uniq[t] for t in sorted(uniq)], src
         errors.append(f"{src}: aucune bougie")
     raise DataError(f"{pair} {interval}: " + " | ".join(errors))
+
+
+def fine_candles(pair, start, end, sources=DEFAULT_SOURCES):
+    """Bougies 1 min de [start, end) pour trancher l'ordre stop / objectif (Gate garde
+    environ 6 jours de 1 min, OKX prend le relais au-delà). Renvoie (bougies, source)."""
+    rows, src = candles(pair, "1m", start, end - 1, sources)
+    return [r for r in rows if start <= r["t"] < end], src
+
+
+def funding_history(pair, start, end):
+    """Taux de funding réellement réglés entre start et end (Gate) : [(t, taux)].
+    Positif = les longs paient. Gate et Bybit ont des taux proches mais pas identiques."""
+    q = urllib.parse.urlencode({"contract": f"{base_of(pair)}_USDT", "limit": 1000,
+                                "from": int(start), "to": int(end)})
+    data = http_json(f"https://api.gateio.ws/api/v4/futures/usdt/funding_rate?{q}")
+    return sorted((int(d["t"]), float(d["r"])) for d in data if start < int(d["t"]) <= end), "gate"
 
 
 # ------------------------------------------------------------------ tickers

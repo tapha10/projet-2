@@ -65,16 +65,25 @@ Prix d'entrée virtuel : dernier prix 15 min + 0,1 % de glissement.
 | C (adaptatif) | 1,5 x ATR(14) journalier, borné 10-25 % | 2,5 x distance du stop | stop suiveur (distance = distance initiale) après +20 % | 2,5 | 29 % |
 
 Commun : sortie par le temps après 10 jours ; si stop et objectif sont dans la même
-bougie, le stop compte d'abord. Taille = (1 % du capital du bras) / distance du stop,
+bougie 15 min, la bougie est rejouée minute par minute ; si l'ordre reste inconnu
+(même minute ou pas de bougies 1 min), le stop compte d'abord. Taille = (1 % du capital du bras) / distance du stop,
 plafonnée par le levier maximum. Le levier est choisi pour que la liquidation
 estimée (marge de maintenance 1 % + 2 % de marge) reste sous le stop.
 
 ## Suivi (4 fois par jour)
 
-Bougies de **15 minutes** depuis la dernière vérification, plus hauts et plus bas.
-Ordre par bougie : liquidation / stop → objectif → passage à l'équilibre → stop
-suiveur (appliqués à partir de la bougie suivante) → durée maximale.
-Frais : 0,05 % par exécution et par côté. Funding estimé : 0,01 % par 8 h.
+Bougies de **15 minutes** fermées, chacune traitée **une seule fois** : `sim_through_at`
+mémorise la fin de la dernière bougie simulée et la vérification suivante repart de là.
+Toute bougie où il se passe quelque chose (stop, objectif, liquidation, passage à
+l'équilibre, stop suiveur) et la bougie d'entrée sont **rejouées en bougies de 1 minute**
+(Gate ~6 jours, OKX au-delà) : la sortie est datée à la minute et l'ordre stop / objectif
+est celui du marché. La bougie d'entrée n'est rejouée qu'à partir de la minute suivant
+l'entrée. Ordre dans une bougie : liquidation / stop → objectif → passage à l'équilibre →
+stop suiveur (appliqués à partir de la bougie suivante, donc 1 min après affinage) →
+durée maximale. Audit détaillé : `docs/audit_bougies.md`.
+Frais : 0,055 % par exécution et par côté (preneur Bybit, aussi sur l'objectif).
+Funding : taux **réellement réglés** (historique Gate) entre l'entrée et la sortie ;
+estimation 0,01 % par 8 h seulement si l'historique est indisponible.
 
 ## Auto-amélioration (12:30)
 

@@ -134,62 +134,83 @@ def plan_t_position(entry, equity, atr_value, tier_state, split=DEFAULT_SPLIT, m
 
 
 # ---------------------------------------------------------------- simulation des tranches
-def step_tranches(pos, candles, slippage=0.0, candle_seconds=900):
+def step_tranches(pos, candles, slippage=0.0, candle_seconds=900, refine=None, now=None):
     """Avance une position en tranches. pos : dict (voir plan_t_position) + opened_ts,
-    highest, lowest, stop_price, peak_ts. Modifie pos ; renvoie la liste des événements.
-    Hypothèses prudentes : stop d'abord dans une même bougie ; stop à l'entrée et stop
-    suiveur appliqués à partir de la bougie suivante."""
+    highest, lowest, stop_price, peak_ts (+ through, fin de la dernière bougie traitée).
+    Modifie pos ; renvoie la liste des événements. Mêmes règles que simulate.step :
+    bougies fermées seulement, chacune une seule fois ; bougie d'entrée et bougies à
+    événement rejouées en 1 min si `refine` est fourni ; sinon stop d'abord dans une même
+    bougie ; stop à l'entrée et stop suiveur appliqués à partir de la bougie suivante."""
     ev = []
     entry = pos["entry_price"]
     atr = pos.get("atr") or entry * pos["stop_dist"] / P1_STOP["mult"]
-    for k in candles:
-        if k["t"] < pos["opened_ts"] - 1:
-            continue
-        open_tr = [t for t, d in pos["tranches"].items() if d["status"] == "open"]
-        if not open_tr:
-            break
-        end_ts = k["t"] + candle_seconds
-        # 1) stop (commun à toutes les tranches ouvertes ; le coureur a son propre suiveur)
-        for t in list(open_tr):
-            d = pos["tranches"][t]
-            st = d.get("stop", pos["stop_price"])
-            if k["l"] <= st:
-                fill = min(st, k["o"]) * (1 - slippage)
-                if st <= pos["initial_stop_price"] * (1 + 1e-9):
-                    reason = "sl"
-                elif abs(st - entry) / entry < 1e-9:
-                    reason = "breakeven"
-                else:
-                    reason = "trailing"
-                close_tranche(pos, t, fill, reason, k["t"])
-                ev.append((t, reason, k["t"]))
-        # 2) objectifs
-        for t, d in pos["tranches"].items():
-            if d["status"] == "open" and d["target"] and k["h"] >= d["target"]:
-                close_tranche(pos, t, d["target"], "tp", k["t"])
-                ev.append((t, "tp", k["t"]))
-        if k["h"] > pos["highest"]:
-            pos["highest"], pos["peak_ts"] = k["h"], k["t"]
-        pos["lowest"] = min(pos["lowest"], k["l"])
-        # 3) après la tranche A : stop du solde à l'entrée
-        if pos["tranches"]["A"]["status"] == "closed" and pos["tranches"]["A"]["exit_reason"] == "tp":
-            if pos["stop_price"] < entry:
-                pos["stop_price"] = entry
-                ev.append(("*", "stop_to_entry", k["t"]))
-        # 4) coureur : stop chandelier (plus haut - 3 x ATR), jamais sous le stop commun
-        c = pos["tranches"]["C"]
-        if c["status"] == "open":
-            ch = pos["highest"] - pos["chandelier_mult"] * atr
-            c["stop"] = max(pos["stop_price"], ch, c.get("stop", 0))
-        for t, d in pos["tranches"].items():
-            if t != "C" and d["status"] == "open":
-                d["stop"] = pos["stop_price"]
-        # 5) durée maximale par tranche
-        for t, d in pos["tranches"].items():
-            if d["status"] == "open" and end_ts >= pos["opened_ts"] + d["max_hold_days"] * 86400:
-                close_tranche(pos, t, k["c"] * (1 - slippage), "time", end_ts)
-                ev.append((t, "time", end_ts))
+    pos.setdefault("audit", [])
+    _, pos["through"] = simulate.walk(
+        candles, candle_seconds, now, refine, pos["opened_ts"], pos.get("through"),
+        lambda k: _t_eventful(pos, k, atr),
+        lambda k, cs, fine: _t_advance(pos, k, cs, slippage, ev, entry, atr), pos["audit"])
     return ev
+
+
+def _t_eventful(pos, k, atr):
+    for d in pos["tranches"].values():
+        if d["status"] != "open":
+            continue
+        if k["l"] <= d.get("stop", pos["stop_price"]) or (d["target"] and k["h"] >= d["target"]):
+            return True
+    c = pos["tranches"].get("C")
+    if c and c["status"] == "open" and k["h"] > pos["highest"]:
+        return k["l"] <= k["h"] - pos["chandelier_mult"] * atr
+    return False
+
+
+def _t_advance(pos, k, candle_seconds, slippage, ev, entry, atr):
+    """Une bougie ; renvoie True quand toutes les tranches sont fermées."""
+    if not [t for t, d in pos["tranches"].items() if d["status"] == "open"]:
+        return True
+    open_tr = [t for t, d in pos["tranches"].items() if d["status"] == "open"]
+    end_ts = k["t"] + candle_seconds
+    # 1) stop (commun à toutes les tranches ouvertes ; le coureur a son propre suiveur)
+    for t in list(open_tr):
+        d = pos["tranches"][t]
+        st = d.get("stop", pos["stop_price"])
+        if k["l"] <= st:
+            fill = min(st, k["o"]) * (1 - slippage)
+            if st <= pos["initial_stop_price"] * (1 + 1e-9):
+                reason = "sl"
+            elif abs(st - entry) / entry < 1e-9:
+                reason = "breakeven"
+            else:
+                reason = "trailing"
+            close_tranche(pos, t, fill, reason, k["t"])
+            ev.append((t, reason, k["t"]))
+    # 2) objectifs
+    for t, d in pos["tranches"].items():
+        if d["status"] == "open" and d["target"] and k["h"] >= d["target"]:
+            close_tranche(pos, t, d["target"] * (1 - slippage), "tp", k["t"])
+            ev.append((t, "tp", k["t"]))
+    if k["h"] > pos["highest"]:
+        pos["highest"], pos["peak_ts"] = k["h"], k["t"]
+    pos["lowest"] = min(pos["lowest"], k["l"])
+    # 3) après la tranche A : stop du solde à l'entrée
+    if pos["tranches"]["A"]["status"] == "closed" and pos["tranches"]["A"]["exit_reason"] == "tp":
+        if pos["stop_price"] < entry:
+            pos["stop_price"] = entry
+            ev.append(("*", "stop_to_entry", k["t"]))
+    # 4) coureur : stop chandelier (plus haut - 3 x ATR), jamais sous le stop commun
+    c = pos["tranches"]["C"]
+    if c["status"] == "open":
+        ch = pos["highest"] - pos["chandelier_mult"] * atr
+        c["stop"] = max(pos["stop_price"], ch, c.get("stop", 0))
+    for t, d in pos["tranches"].items():
+        if t != "C" and d["status"] == "open":
+            d["stop"] = pos["stop_price"]
+    # 5) durée maximale par tranche
+    for t, d in pos["tranches"].items():
+        if d["status"] == "open" and end_ts >= pos["opened_ts"] + d["max_hold_days"] * 86400:
+            close_tranche(pos, t, k["c"] * (1 - slippage), "time", end_ts)
+            ev.append((t, "time", end_ts))
+    return all(d["status"] != "open" for d in pos["tranches"].values())
 
 
 def close_tranche(pos, t, price, reason, ts):
@@ -197,7 +218,7 @@ def close_tranche(pos, t, price, reason, ts):
     d.update(status="closed", exit_price=price, exit_reason=reason, exit_ts=ts)
 
 
-def settle(pos, fee_rate=0.0005, funding_8h=0.0001, last_price=None, now_ts=None):
+def settle(pos, fee_rate=0.0005, funding_8h=0.0001, last_price=None, now_ts=None, funding_rates=None):
     """Résultat agrégé : gains par tranche (dont la somme = total), R, MFE, MAE, pic."""
     entry, size = pos["entry_price"], pos["size_usd"]
     total = 0.0
@@ -214,7 +235,7 @@ def settle(pos, fee_rate=0.0005, funding_8h=0.0001, last_price=None, now_ts=None
                 continue
             px, ts = last_price, now_ts
         fees = fee_rate * (notional + qty * px)
-        funding = notional * funding_8h * max(0.0, (ts - pos["opened_ts"]) / 3600) / 8
+        funding = simulate.funding_cost(notional, pos["opened_ts"], ts, funding_rates, funding_8h)
         pnl = qty * (px - entry) - fees - funding
         d["pnl_usd"] = round(pnl, 6) if d["status"] == "closed" else None
         per[t] = pnl
