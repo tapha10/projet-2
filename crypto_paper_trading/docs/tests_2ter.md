@@ -90,3 +90,11 @@ Résultats bruts : `docs/replay_2ter.json`.
 
 Activée après ces tests : migration 004 en base, routines 1 à 4 modifiées, routines 5 et 6
 planifiées, routine 6 en **lecture seule pendant 7 jours** (`config.r6_readonly_until`).
+
+## 6. Premiers passages réels (03/10/2026, après activation)
+
+- Routine 5 (complète) : 13 signaux traités, 52 trades d'ombre (6 déjà terminés : stops serrés
+  P2-P4 touchés sur NIGHT et SI), 13 instantanés rattrapés, ligne `routine5 / ok`, verrou libéré.
+- Routine 6 (quotidienne, **lecture seule** jusqu'au 10/10/2026 19:35 UTC) : 13 événements
+  indépendants ; P1 : 0 résultat complet ; P2-P4 : 2 résultats complets (2 stops). Aucun
+  critère ni palier ne peut être jugé avant des dizaines d'événements : statut « inconclusif ».

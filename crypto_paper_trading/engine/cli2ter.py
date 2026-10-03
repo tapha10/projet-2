@@ -283,15 +283,18 @@ def r5_compute(data, fetch, now, weekly=False, max_signals=60):
 
 def r5_sql(res):
     sql = []
-    for t in res["shadow"]:
+    if res["shadow"]:
         cols = "signal_id, tier, strategy_version_id, opened_at, entry_price, stop_pct, win, exit_reason, r, r_slip2, mfe_pct, mae_pct, hold_hours, complete"
-        vals = ", ".join([q(t["signal_id"]), q(t["tier"]), q(t["strategy_version_id"]), qts(t["opened_at"]),
-                          q(t["entry_price"]), q(t["stop_pct"]), q(t["win"]), q(t["exit"]), q(t["r"]),
-                          q(t["r_slip2"]), q(t["mfe_pct"]), q(t["mae_pct"]), q(t["hold_hours"]), q(t["complete"])])
-        sql.append(f"insert into shadow_trades({cols}) values ({vals}) on conflict (signal_id, tier) do update set "
-                   "win=excluded.win, exit_reason=excluded.exit_reason, r=excluded.r, r_slip2=excluded.r_slip2, "
-                   "mfe_pct=excluded.mfe_pct, mae_pct=excluded.mae_pct, hold_hours=excluded.hold_hours, "
-                   "complete=excluded.complete, updated_at=now();")
+        rows = []
+        for t in res["shadow"]:
+            rows.append("(" + ", ".join([q(t["signal_id"]), q(t["tier"]), q(t["strategy_version_id"]), qts(t["opened_at"]),
+                                         q(t["entry_price"]), q(round(t["stop_pct"], 6)), q(t["win"]), q(t["exit"]),
+                                         q(round(t["r"], 4)), q(round(t["r_slip2"], 4)), q(round(t["mfe_pct"], 6)),
+                                         q(round(t["mae_pct"], 6)), q(t["hold_hours"]), q(t["complete"])]) + ")")
+        sql.append(f"insert into shadow_trades({cols}) values\n" + ",\n".join(rows) +
+                   "\non conflict (signal_id, tier) do update set win=excluded.win, exit_reason=excluded.exit_reason, "
+                   "r=excluded.r, r_slip2=excluded.r_slip2, mfe_pct=excluded.mfe_pct, mae_pct=excluded.mae_pct, "
+                   "hold_hours=excluded.hold_hours, complete=excluded.complete, updated_at=now();")
     for f in res["features"]:
         sql.append(f"insert into signal_features(signal_id, decision_ts, pair, features, criteria) values "
                    f"({f['signal_id']}, {qts(f['decision_ts'])}, {q(f['pair'])}, {q(f['features'])}, {q(f['criteria'])}) "
