@@ -820,7 +820,7 @@ def cmd_report(a):
     # capital
     L.append("## 1. Capital virtuel\n")
     L.append("Chaque bras est un portefeuille virtuel séparé de "
-             f"{cap0:,.0f} USDT (mêmes signaux, mêmes entrées).\n".replace(",", " "))
+             + f"{cap0:,.0f}".replace(",", " ") + " USDT (mêmes signaux, mêmes entrées).\n")
     L.append("| Bras | Capital réalisé | ROI cumulé | PnL semaine | ROI semaine | Drawdown max | Trades fermés |")
     L.append("|---|---|---|---|---|---|---|")
     metrics = dict(by_arm={}, week_by_arm={})

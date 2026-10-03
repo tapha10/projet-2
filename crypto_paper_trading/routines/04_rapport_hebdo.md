@@ -47,8 +47,10 @@
 5. Exécute `$W/report.sql` (enregistre le rapport dans `weekly_reports`).
 6. **Envoi** à l'adresse de `config.report_email` (moustaphatall38@gmail.com) avec le
    connecteur Gmail (`send_message` ; charge-le via ToolSearch `+Gmail send`) :
-   sujet `[DÉMO] Rapport paper trading crypto — semaine du <date>`, corps = le markdown
-   du rapport. Si l'envoi est impossible, crée un brouillon (`create_draft`) ; si Gmail
+   sujet `[DÉMO] Rapport paper trading crypto — semaine du <date>`. Le champ `body` de
+   Gmail n'accepte **pas** le markdown : envoie soit une version texte brut du rapport
+   (titres en majuscules, listes à tirets, URL en clair), soit une version HTML via
+   `htmlBody`. Garde toujours l'avertissement démo et la section des limites. Si l'envoi est impossible, crée un brouillon (`create_draft`) ; si Gmail
    n'est pas disponible, le rapport reste dans `weekly_reports` : dis-le dans le résumé.
 7. **Résumé** : 5 lignes maximum (ROI par bras, nombre de trades, alerte drawdown
    éventuelle, statut de l'envoi).

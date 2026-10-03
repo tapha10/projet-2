@@ -25,6 +25,25 @@ Connecteur Gmail ──► rapport hebdomadaire
 | 2. Vérification stop / objectif | 08:00, 14:30, 20:00, 23:30 | `routines/02_verification.md` |
 | 4. Rapport hebdomadaire | dimanche 18:00 | `routines/04_rapport_hebdo.md` |
 
+### Planification
+
+Les routines sont des déclencheurs Claude Code (« Routines ») rattachés à la session
+cloud qui a construit le système, car c'est elle qui détient les connecteurs Supabase
+et Gmail : une routine créée en « nouvelle session à chaque exécution » depuis l'outil
+n'emporte aucun connecteur dans cette organisation. Chaque déclenchement repart de
+Supabase (le prompt interdit de s'appuyer sur la mémoire de la conversation).
+Pour des sessions totalement isolées, recréer les 5 routines depuis l'interface
+claude.ai (Routines) en cochant les connecteurs Supabase et Gmail, avec le même prompt.
+
+| Déclencheur | Cron (Europe/Paris) |
+|---|---|
+| 3. Adaptation | `27 12 * * *` |
+| 1. Analyse et entrées | `0 14 * * *` |
+| 2. Vérification | `0 8,20 * * *` et `30 14,23 * * *` |
+| 4. Rapport | `0 18 * * 0` |
+
+Le serveur peut décaler l'heure de quelques minutes pour répartir la charge.
+
 ## Contenu
 
 - `sql/001_init.sql` — tables, index, RLS (sans politique publique), triggers garde-fous,
