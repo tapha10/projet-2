@@ -108,6 +108,10 @@ CRITERIA = {
     "stop_serre_8": _lt("stop_struct_pct", 0.08),
     "liquide_5M": _ge("liquidity_7d", 5e6),
     "heure_europe": lambda f: None if f.get("hour_paris") is None else 8 <= f["hour_paris"] < 18,
+    # modes de détection (comparés entre eux par la routine 6)
+    "mode_momentum": lambda f: None if f.get("detection_mode") is None else "momentum" in f["detection_mode"],
+    "mode_avant_hausse": lambda f: None if f.get("detection_mode") is None else "pre_move" in f["detection_mode"],
+    "mode_annonce": lambda f: None if f.get("detection_mode") is None else "announcement" in f["detection_mode"],
 }
 
 

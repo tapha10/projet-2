@@ -39,6 +39,7 @@ claude.ai (Routines) en cochant les connecteurs Supabase et Gmail, avec le même
 |---|---|
 | 3. Adaptation | `27 12 * * *` |
 | 1. Analyse et entrées | `0 14 * * *` |
+| 1b. Analyse intrajournalière (détection précoce) | `0 2,6,10,18,22 * * *` |
 | 2. Vérification | `0 8,20 * * *` et `30 14,23 * * *` |
 | 4. Rapport | `0 18 * * 0` |
 | 5. Préparation des données (2ter) | `0 4 * * *` et `0 10 * * 0` |

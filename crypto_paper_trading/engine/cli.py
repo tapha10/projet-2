@@ -18,7 +18,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-from . import indicators, market, risk, simulate, stats
+from . import announcements, early, indicators, market, risk, simulate, stats
 from .sqlgen import load_json_loose, q, qarr, qts
 
 ARMS = ("A", "B", "C")
@@ -119,6 +119,7 @@ def cmd_scan(a):
     rules = cfgv(cfg, "entry_rules", {})
     sources = tuple(cfgv(cfg, "data_sources", list(market.DEFAULT_SOURCES)))
     tick, tsrc = market.tickers()
+    listed = {}
     try:
         contracts = market.crypto_contracts()
         tick = [t for t in tick if t["pair"] in contracts]  # crypto uniquement
@@ -159,6 +160,10 @@ def cmd_scan(a):
     w = {k: float(v) for k, v in cfgv(cfg, "signal_weights", {}).items() if k != "version"}
     cands.sort(key=lambda c: -sum(w.get(x, 0) for x in c["market_signal_types"] + c["market_alerts"]))
     cands = cands[: int(rules.get("max_candidates_per_scan", 15))]
+    for c in cands:  # logique d'origine inchangée : on étiquette seulement le mode de détection
+        c["market_signal_types"] = c["market_signal_types"] + ["mode_momentum"]
+        c["detection_modes"] = ["momentum"]
+    early_log = early_candidates(cfg, cands, tick, by_pair, listed, recent | open_pairs | waiting, sources, errors)
 
     waits = []
     for s in st.get("pending_waits", []):
@@ -188,13 +193,92 @@ def cmd_scan(a):
         waits.append(item)
 
     out = dict(generated_at=iso(now_ts()), tickers_source=tsrc, candidates=cands,
-               waits=waits, errors=errors,
+               waits=waits, errors=errors, early_detection=early_log,
                instructions=("Complète news[] ({type, url, titre, date_publication}), alerts[] "
                              "(alert_team_transfer, alert_unlock_7d) et unlock_supply_pct_7d pour "
                              "chaque candidat et chaque wait, puis lance `decide`."))
     write(a.out, json.dumps(out, ensure_ascii=False, indent=1, default=str))
-    print(f"{len(cands)} candidats, {len(waits)} wait à réévaluer, source tickers={tsrc}, "
+    modes = {}
+    for c in cands:
+        for m in c.get("detection_modes", []):
+            modes[m] = modes.get(m, 0) + 1
+    print(f"{len(cands)} candidats {modes}, {len(waits)} wait à réévaluer, source tickers={tsrc}, "
           f"{len(errors)} erreurs -> {a.out}")
+    print(f"Détection précoce : {json.dumps(early_log, ensure_ascii=False, default=str)[:600]}")
+
+
+def early_candidates(cfg, cands, tick, by_pair, listed, exclude, sources, errors):
+    """Ajoute les candidats « annonce d'exchange » et « avant la hausse » (addendum détection
+    précoce). Ne retire ni ne modifie aucun candidat momentum (seules les alertes d'exchange
+    négatives et les annonces datées s'ajoutent à un candidat déjà présent)."""
+    ed = early.settings(cfgv(cfg, "early_detection", {}))
+    if not ed.get("enabled"):
+        return dict(enabled=False)
+    exclude = set(exclude) | {"BTCUSDT", "ETHUSDT"}
+    known = {c["pair"]: c for c in cands}
+    log = {}
+
+    def add(pair, mode, extra_types=()):
+        if pair in known:
+            c = known[pair]
+        else:
+            c = market_profile(pair, by_pair[pair], sources)
+            types, alerts = market_signal_types(c, listed)
+            c.update(market_signal_types=types, market_alerts=alerts,
+                     listed_at=iso(listed[pair]) if pair in listed else None,
+                     news=[], alerts=[], unlock_supply_pct_7d=None, notes="", detection_modes=[])
+            cands.append(c)
+            known[pair] = c
+        for t in list(extra_types) + [f"mode_{mode}"]:
+            if t not in c["market_signal_types"]:
+                c["market_signal_types"].append(t)
+        if mode not in c["detection_modes"]:
+            c["detection_modes"].append(mode)
+        return c
+
+    # --- 1) annonces officielles des exchanges
+    acfg = ed["announcements"]
+    try:
+        items, aerr = announcements.recent(acfg["hours"])
+    except Exception as e:
+        items, aerr = [], {"toutes": str(e)[:120]}
+    grouped = announcements.by_pair(items, set(by_pair))
+    added = 0
+    now = now_ts()
+    for pair, lst in grouped.items():
+        pos = [x for x in lst if x["kind"] in announcements.POSITIVE]
+        neg = [x for x in lst if x["kind"] in announcements.NEGATIVE]
+        if pair not in known and (not pos or pair in exclude or added >= acfg["max_candidates"]):
+            continue
+        is_new = pair not in known
+        try:
+            fresh = any(now - x["published_at"] <= acfg["fresh_hours"] * 3600 for x in pos)
+            c = add(pair, "announcement", ["annonce_exchange_fraiche"] if fresh else []) if pos else known[pair]
+        except Exception as e:
+            errors.append(f"annonce {pair}: {e}"[:200])
+            continue
+        if is_new:
+            added += 1
+        for x in pos + neg:
+            c["news"].append(announcements.to_news(x))
+        if neg and "alert_exchange_warning" not in c["market_alerts"]:
+            c["market_alerts"].append("alert_exchange_warning")
+    log["announcements"] = dict(n_annonces=len(items), pairs=sorted(grouped), erreurs=aerr)
+
+    # --- 2) avant la hausse : volume / open interest en hausse, prix encore calme
+    try:
+        found, n_scanned = early.pre_move_scan(tick, exclude | set(known), ed["pre_move"], sources)
+    except Exception as e:
+        found, n_scanned = [], 0
+        errors.append(f"pre_move: {e}"[:200])
+    for pair, det in found:
+        try:
+            c = add(pair, "pre_move", ["pre_move_accumulation"])
+            c["pre_move"] = det
+        except Exception as e:
+            errors.append(f"pre_move {pair}: {e}"[:200])
+    log["pre_move"] = dict(scannes=n_scanned, retenus=[p for p, _ in found])
+    return log
 
 
 # ================================================================= DECIDE
@@ -236,6 +320,8 @@ def decide_candidate(c, rules, weights):
         return types, alerts, sc, "skip", "alerte : transferts de l'équipe / market maker vers les exchanges"
     if "alert_unlock_7d" in alerts:
         return types, alerts, sc, "skip", "alerte : unlock > 0,5 % de l'offre dans les 7 jours"
+    if "alert_exchange_warning" in alerts:
+        return types, alerts, sc, "skip", "alerte : mise sous surveillance ou fin de cotation annoncée par un exchange"
     if sc < float(rules.get("min_score_enter", 3.0)):
         return types, alerts, sc, "skip", f"score {sc} < seuil {rules.get('min_score_enter', 3.0)}"
     ch = max(c.get("change_24h") or 0, c.get("signal_candle_change") or 0)
@@ -362,7 +448,8 @@ def cmd_decide(a):
             metrics={k: c.get(k) for k in ("change_24h", "signal_candle_change", "signal_day_ts",
                                            "quote_vol_24h", "vol_ratio", "vol_doubling",
                                            "oi_change_3d", "rsi14", "atr14", "breakout_20d",
-                                           "peak_passed", "listed_at", "unlock_supply_pct_7d", "notes")}
+                                           "peak_passed", "listed_at", "unlock_supply_pct_7d", "notes",
+                                           "detection_modes", "pre_move")}
             | {"entry_rules_version": rules.get("version"),
                "weights_version": cfgv(cfg, "signal_weights", {}).get("version")},
             reevaluate_after=now + 0.8 * DAY if dec == "wait" else None))
@@ -900,6 +987,28 @@ def cmd_report(a):
     else:
         L.append("Aucun trade fermé pour l'instant : impossible de comparer les types de signaux.")
     metrics["by_signal_type"] = {k: stats.metrics(v) for k, v in types.items()}
+    # comparaison des modes de détection (momentum / avant la hausse / annonce d'exchange)
+    L.append("\n### Modes de détection comparés\n")
+    L.append("| Mode | Signaux | enter / wait / skip | Trades fermés (A+B+C) | R moyen | Gain max 10 j moyen (tous signaux) | Baisse max 10 j moyenne |")
+    L.append("|---|---|---|---|---|---|---|")
+    mode_stats = {}
+    for tag, label in (("mode_momentum", "momentum (hausse 24 h)"), ("mode_pre_move", "avant la hausse"),
+                       ("mode_announcement", "annonce d'exchange")):
+        ss = [x for x in sig if tag in (x.get("signal_types") or []) and not x.get("is_reference")]
+        dec = [sum(1 for x in ss if x.get("decision") == k) for k in ("enter", "wait", "skip")]
+        ids = {x["id"] for x in ss}
+        tr = [p for p in closed if p["signal_id"] in ids]
+        m = stats.metrics(tr)
+        g = [float(x["outcome_max_gain_pct"]) for x in ss if x.get("outcome_max_gain_pct") is not None]
+        dd = [float(x["outcome_max_dd_pct"]) for x in ss if x.get("outcome_max_dd_pct") is not None]
+        mode_stats[tag] = dict(n_signals=len(ss), decisions=dec, n_trades=m["n"], avg_r=m.get("avg_r"),
+                               avg_gain10=stats.mean(g), avg_dd10=stats.mean(dd), n_outcomes=len(g))
+        L.append(f"| {label} | {len(ss)} | {dec[0]} / {dec[1]} / {dec[2]} | {m['n']} | {fmt(m.get('avg_r'))} | "
+                 f"{fmt_pct(stats.mean(g))} (n={len(g)}) | {fmt_pct(stats.mean(dd))} |")
+    L.append("\nLe gain et la baisse max à 10 jours sont mesurés sur **tous** les signaux, même non pris : "
+             "c'est ce qui dira si un mode arrive plus tôt dans la hausse. "
+             + stats.sample_warning(min(v["n_outcomes"] for v in mode_stats.values())))
+    metrics["by_detection_mode"] = mode_stats
     # avance du signal
     leads = [(stats.parse_ts(s["rise_started_at"]) - stats.parse_ts(s["info_published_at"])) / 3600
              for s in sig if s.get("info_published_at") and s.get("rise_started_at")]

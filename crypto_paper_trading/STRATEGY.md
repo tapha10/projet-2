@@ -111,3 +111,20 @@ Portefeuille virtuel séparé « T » (les bras A/B/C sont inchangés). Détails
   **Retour en ombre** si la borne haute 80 % sur 40 événements passe sous l'équilibre.
 - Routine 5 (04:00, dimanche 10:00) : résultats d'ombre ; routine 6 (05:30, dimanche 11:00) :
   critères et décisions, en lecture seule les 7 premiers jours.
+
+## Détection précoce (ajoutée le 03/10/2026)
+
+Trois modes de détection tournent en parallèle et sont comparés chaque semaine (rapport,
+section « Modes de détection comparés », et critères `mode_*` de la routine 6) :
+
+| Mode | Comment | Poids ajoutés |
+|---|---|---|
+| `momentum` | plus fortes hausses 24 h + nouveaux perps (logique d'origine) | – |
+| `pre_move` « avant la hausse » | volume 24 h ≥ 2x la moyenne 14 j, prix < 10 % sur 24 h et < 20 % sur 7 j, **et** open interest +15 % sur 3 j ou ATR(7)/ATR(30) ≤ 0,85 ; balayage de ~250 perps liquides (≥ 1 M USDT) | `pre_move_accumulation` +2,0 |
+| `announcement` | annonces officielles < 48 h : Binance, OKX, KuCoin, Bitget, Bithumb (listing, perp, levée de surveillance) | `annonce_exchange_fraiche` (< 24 h) +1,0 |
+
+Mise sous surveillance ou fin de cotation annoncée par un exchange : `alert_exchange_warning`
+(−3,0, **skip**). Upbit, Gate et Bybit ne sont pas accessibles depuis le cloud (403).
+
+Recherche toutes les 4 heures : 14:00 (complète) + 02:00, 06:00, 10:00, 18:00, 22:00 (légère,
+routine 1b). Les plafonds (3 entrées/jour/bras, 8 positions) sont communs à tous les passages.

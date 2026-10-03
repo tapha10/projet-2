@@ -78,6 +78,7 @@ def snapshot(pair, decision_ts, fetch, cand, btc_daily, oi=None):
     f = features.compute_features(decision_ts, daily, hourly, btc_daily, oi, cand.get("funding_rate"),
                                   news_info(cand.get("news"), cand.get("alerts"), cand),
                                   tiers.stop_pct(entry, atr, tiers.P1_STOP))
+    f["detection_mode"] = cand.get("detection_modes")
     return f, features.eval_criteria(f)
 
 

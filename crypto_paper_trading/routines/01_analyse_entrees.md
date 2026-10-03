@@ -32,6 +32,14 @@
    (sources publiques essayées dans l'ordre Gate → OKX → MEXC → KuCoin ; Binance et Bybit
    sont bloqués depuis le cloud). Le fichier contient `candidates` (nouveaux signaux) et
    `waits` (signaux en attente à réévaluer).
+   **Trois modes de détection** (comparés dans le rapport, étiquette `mode_*`) :
+   - `momentum` : plus fortes hausses 24 h et nouveaux perps (logique d'origine) ;
+   - `pre_move` (« avant la hausse ») : volume ≥ 2x la moyenne 14 j **et** open interest +15 % sur
+     3 j ou volatilité comprimée, alors que le prix a bougé de moins de 10 % sur 24 h ;
+   - `announcement` : annonce officielle récente (48 h) de Binance, OKX, KuCoin, Bitget ou
+     Bithumb (listing, nouveau perp, levée de surveillance). Ces annonces sont **déjà** dans
+     `news[]` avec leur date exacte (`source: annonce_exchange`) ; une mise sous surveillance
+     ou une fin de cotation ajoute l'alerte `alert_exchange_warning` (→ skip).
 3. **Recherche d'informations** (WebSearch / WebFetch ; X seulement si un navigateur est
    disponible) pour chaque candidat et chaque wait, en commençant par les meilleurs scores.
    Cherche, sur les 14 derniers jours :
@@ -46,7 +54,10 @@
    avec la **date et l'heure de publication** (ISO 8601, UTC si possible). Sans date
    vérifiable, ne l'ajoute pas. N'invente jamais une source. Mets dans `notes` un résumé
    d'une ligne. Mets à jour `$W/candidates.json` (Write ou petit script Python).
-   Budget : environ 2 à 4 recherches par candidat, 40 au total maximum.
+   Budget : environ 2 à 4 recherches par candidat, 40 au total maximum. Priorité aux candidats
+   `pre_move` et `announcement` (ce sont eux qui peuvent arriver avant la hausse) ; ne refais pas
+   la recherche d'une annonce d'exchange déjà présente dans `news[]`, cherche plutôt unlocks et
+   transferts de l'équipe.
 4. **Décision et entrées virtuelles** :
    `python3 -m engine.cli decide --tiers --state $W/state.json --candidates $W/candidates.json --out $W/entries.sql`
    Le moteur applique les règles d'entrée (jamais la bougie du signal, réévaluation des
