@@ -173,6 +173,12 @@ class TestDecide(unittest.TestCase):
                  market_alerts=[], news=[{"type": "dated_announcement"}], alerts=[])
         self.assertEqual(cli.decide_candidate(c, self.rules, self.w)[3], "wait")
 
+    def test_previous_day_signal_candle_is_wait(self):
+        c = dict(pair="XUSDT", change_24h=0.05, signal_candle_change=0.52,
+                 market_signal_types=["volume_doubling"], market_alerts=[],
+                 news=[{"type": "dated_announcement"}], alerts=[])
+        self.assertEqual(cli.decide_candidate(c, self.rules, self.w)[3], "wait")
+
     def test_team_transfer_skip(self):
         c = dict(pair="XUSDT", change_24h=0.05, market_signal_types=["volume_doubling"], market_alerts=[],
                  news=[{"type": "dated_announcement"}], alerts=["alert_team_transfer"])

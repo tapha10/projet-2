@@ -69,6 +69,17 @@ def market_profile(pair, ticker=None, sources=market.DEFAULT_SOURCES):
         breakout_20d=bool(hi20 and last > hi20),
         n_daily=len(complete),
     )
+    # Bougie du signal = plus forte variation journalière (ouverture -> clôture) parmi
+    # la veille complète et le jour en cours, ou la variation 24 h glissante.
+    cands = [(prof["change_24h"] or 0, None)]
+    if complete:
+        cands.append((complete[-1]["c"] / complete[-1]["o"] - 1, complete[-1]["t"]))
+    cur = [d for d in daily if d["t"] + DAY > now]
+    if cur:
+        cands.append((last / cur[-1]["o"] - 1, cur[-1]["t"]))
+    big = max(cands, key=lambda x: x[0])
+    prof["signal_candle_change"] = big[0]
+    prof["signal_day_ts"] = big[1] if big[1] is not None else (cur[-1]["t"] if cur else None)
     # pic déjà passé : +50 % sur 10 j puis rendu plus de 25 % depuis le plus haut
     w = complete[-10:]
     if w:
@@ -151,13 +162,14 @@ def cmd_scan(a):
 
     waits = []
     for s in st.get("pending_waits", []):
-        root_ts = stats.parse_ts((s.get("metrics") or {}).get("root_detected_at") or s["detected_at"])
+        m = s.get("metrics") or {}
+        root_ts = stats.parse_ts(m.get("root_detected_at") or s["detected_at"])
         age_days = (now_ts() - root_ts) / DAY
         item = dict(signal_id=s["id"], pair=s["pair"], age_days=round(age_days, 2),
                     root_detected_at=iso(root_ts), news=[], alerts=[], unlock_supply_pct_7d=None)
         try:
             daily, src = market.candles(s["pair"], "1d", root_ts - 20 * DAY, now_ts(), sources)
-            day0 = int(root_ts // DAY * DAY)
+            day0 = int(m.get("signal_day_ts") or (root_ts // DAY * DAY))
             before = [d for d in daily if d["t"] < day0][-14:]
             sig_day = next((d for d in daily if d["t"] == day0), None)
             tk = by_pair.get(s["pair"])
@@ -226,8 +238,9 @@ def decide_candidate(c, rules, weights):
         return types, alerts, sc, "skip", "alerte : unlock > 0,5 % de l'offre dans les 7 jours"
     if sc < float(rules.get("min_score_enter", 3.0)):
         return types, alerts, sc, "skip", f"score {sc} < seuil {rules.get('min_score_enter', 3.0)}"
-    if (c.get("change_24h") or 0) >= float(rules.get("signal_candle_max_change", 0.15)):
-        return types, alerts, sc, "wait", (f"bougie du signal (+{c['change_24h']:.0%} sur 24 h) : "
+    ch = max(c.get("change_24h") or 0, c.get("signal_candle_change") or 0)
+    if ch >= float(rules.get("signal_candle_max_change", 0.15)):
+        return types, alerts, sc, "wait", (f"bougie du signal (+{ch:.0%} sur la journée ou 24 h) : "
                                            "on n'achète jamais la bougie du signal, réévaluation dans 1-2 jours")
     return types, alerts, sc, "enter", f"score {sc} >= seuil, aucune alerte bloquante"
 
@@ -329,6 +342,7 @@ def cmd_decide(a):
             evidence=(parent.get("evidence") or []) + w.get("news", []), price=w.get("last"),
             decision=dec, reason=reason, data_source=w.get("data_source"), alerts=alerts,
             metrics=dict(reevaluation=True, root_detected_at=w.get("root_detected_at"),
+                         signal_day_ts=(parent.get("metrics") or {}).get("signal_day_ts"),
                          root_signal_id=(parent.get("metrics") or {}).get("root_signal_id", w["signal_id"]),
                          age_days=w["age_days"], vol_ratio_vs_pre_signal=w.get("vol_ratio_vs_pre_signal"),
                          drop_from_signal_close=w.get("drop_from_signal_close"), atr14=w.get("atr14"),
@@ -344,7 +358,8 @@ def cmd_decide(a):
             info_published_at=first_info_ts(c.get("news", [])), evidence=c.get("news", []),
             price=c.get("last"), decision=dec, reason=reason, data_source=c.get("data_source"),
             alerts=alerts, atr=c.get("atr14"), rank=sc,
-            metrics={k: c.get(k) for k in ("change_24h", "quote_vol_24h", "vol_ratio", "vol_doubling",
+            metrics={k: c.get(k) for k in ("change_24h", "signal_candle_change", "signal_day_ts",
+                                           "quote_vol_24h", "vol_ratio", "vol_doubling",
                                            "oi_change_3d", "rsi14", "atr14", "breakout_20d",
                                            "peak_passed", "listed_at", "unlock_supply_pct_7d", "notes")}
             | {"entry_rules_version": rules.get("version"),
