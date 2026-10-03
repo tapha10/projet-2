@@ -87,3 +87,27 @@ Frais : 0,05 % par exécution et par côté. Funding estimé : 0,01 % par 8 h.
   20 derniers trades (rejoués sur les mêmes données).
 - Résultats à 10 jours de **tous** les signaux (entrés ou non) : occasions
   manquées, avance du signal, R contrefactuel par bras.
+
+## Addendum 2ter — échelle d'ambition (paliers P1 à P4)
+
+Portefeuille virtuel séparé « T » (les bras A/B/C sont inchangés). Détails : `docs/audit_2ter.md`.
+
+| Palier | Objectif | Stop | Équilibre | Statut au départ |
+|---|---|---|---|---|
+| P1 « base » | 2,5 R | 1,5 x ATR(14), borné 8-12 % | 29 % | actif (capital papier) |
+| P2 « précision » | 6 R | 0,6 x ATR(14), borné 3-6 % (substitut d'E5) | 14 % | ombre |
+| P3 « grosse hausse » | 10 R | idem | 9 % | ombre |
+| P4 « x50 » | 50 R (coureur) | idem, moitié de risque au plus | 2 % | ombre |
+
+- **Une entrée, plusieurs sorties** : tranche A 50 % à 2,5 R ; B 30 % à 6 R ; C 20 % coureur
+  (stop chandelier = plus haut − 3 x ATR, 30 jours au plus). Après A, le stop du solde passe à
+  l'entrée. Une tranche dont le palier est en ombre est rattachée à A.
+- **Critères** : instantané à chaque signal (`signal_features`, bougies fermées avant la décision),
+  lift avec / sans par palier, événements indépendants (même pair < 10 jours = 1), correction de
+  Benjamini-Hochberg (q = 10 %), rétention si ≥ 30 événements, lift ≥ +10 points, borne basse 80 %
+  > 0 et lift positif sur la validation (30 % récents).
+- **Déblocage** P2/P3/P4 : réussite hors échantillon (borne basse 80 %) ≥ équilibre + 3 points,
+  ≥ 40 événements (P3/P4 : 30), espérance > 0 avec glissement x2, Monte Carlo acceptable.
+  **Retour en ombre** si la borne haute 80 % sur 40 événements passe sous l'équilibre.
+- Routine 5 (04:00, dimanche 10:00) : résultats d'ombre ; routine 6 (05:30, dimanche 11:00) :
+  critères et décisions, en lecture seule les 7 premiers jours.

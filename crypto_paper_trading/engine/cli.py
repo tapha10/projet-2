@@ -291,7 +291,7 @@ def position_sql(arm, version, plan, pair, opened_ts, atr):
     )
 
 
-def signal_block(sig, positions_sql):
+def signal_block(sig, positions_sql, extra=()):
     cols = ("pair, signal_types, score, info_published_at, evidence, price_at_detection, decision, "
             "decision_reason, data_source, alerts, metrics, signal_day_close, parent_signal_id, reevaluate_after")
     vals = ", ".join([q(sig["pair"]), qarr(sig["signal_types"]), q(sig["score"]),
@@ -306,6 +306,7 @@ def signal_block(sig, positions_sql):
             f"insert into iteration_log(routine, change, rationale) values ('analyse', "
             f"jsonb_build_object('blocked_entry', {q(sig['pair'])}, 'arm', {q(arm)}, 'signal_id', sid), "
             f"'Entrée refusée par les garde-fous de la base : ' || sqlerrm); end;")
+    body.extend(extra)  # addendum 2ter : instantané des critères et position du portefeuille T
     return "do $$ declare sid bigint; begin\n  " + "\n  ".join(body) + "\nend $$;\n"
 
 
@@ -367,8 +368,18 @@ def cmd_decide(a):
             reevaluate_after=now + 0.8 * DAY if dec == "wait" else None))
 
     blocks, summary = [], []
+    if a.tiers:  # addendum 2ter (n'altère pas les décisions ni les positions A/B/C)
+        from . import cli2ter
+        fetch2 = cli2ter.default_fetch(sources)
+        try:
+            btc_daily = fetch2("BTCUSDT", "1d", now - 80 * DAY, now)
+        except Exception:
+            btc_daily = []
+        cands = {c["pair"]: c for c in cd.get("candidates", [])}
+        cands.update({w["pair"]: dict(w, last=w.get("last"), atr14=w.get("atr14")) for w in cd.get("waits", [])})
     for d in sorted(decisions, key=lambda d: -d["rank"]):
         psqls = []
+        entry = None
         if d["decision"] == "enter":
             try:
                 entry, src = market.last_price(d["pair"], sources)
@@ -401,9 +412,14 @@ def cmd_decide(a):
                 d["reason"] += " | non ouvert : " + "; ".join(blocked)
             if entry:
                 d["price"] = entry / (1 + slip)
-        blocks.append(signal_block(d, psqls))
+        extra, note2 = [], ""
+        if a.tiers:
+            d["cand"] = cands.get(d["pair"])
+            extra, note2 = cli2ter.decide_hook(st, d, entry, now, fetch2, btc_daily, bool(psqls))
+        blocks.append(signal_block(d, psqls, extra))
         summary.append(f"- {d['pair']} : {d['decision'].upper()} (score {d['score']}) — {d['reason']}"
-                       + (f" -> bras {', '.join(x for x, _ in psqls)}" if psqls else ""))
+                       + (f" -> bras {', '.join(x for x, _ in psqls)}" if psqls else "")
+                       + (f" | {note2}" if note2 else ""))
     write(a.out, "\n".join(blocks) if blocks else "select 'aucune décision' as info;\n")
     print("Décisions du jour :\n" + ("\n".join(summary) if summary else "- aucun candidat"))
 
@@ -441,6 +457,8 @@ def cmd_check(a):
     sql, lines = [], []
     unreal = {arm: 0.0 for arm in ARMS}
     for p in st.get("open_positions", []):
+        if p["arm"] == "T":
+            continue  # portefeuille des paliers : suivi en tranches par cli2ter.check_t
         ps = pos_state(p)
         since = stats.parse_ts(p.get("last_checked_at") or p["opened_at"])
         start = max(ps.opened_ts, since) - simulate.CANDLE_SECONDS
@@ -485,6 +503,11 @@ def cmd_check(a):
                          f"stop {ps.stop:.6g}{' — ' + ev if ev else ''}")
         sql.append(f"insert into price_checks(position_id, last_price, high_since_last, low_since_last, note) "
                    f"values ({p['id']}, {q(last)}, {q(hi)}, {q(lo)}, {q(note)});")
+    if a.tiers:
+        from . import cli2ter
+        sql_t, lines_t, unreal["T"] = cli2ter.check_t(st, now, cli2ter.default_fetch(sources), fee, fund, slip)
+        sql += sql_t
+        lines += lines_t
     if a.daily:
         sql.append(f"select paper_record_daily({q({k: round(v, 4) for k, v in unreal.items()})});")
     write(a.out, "begin;\n" + "\n".join(sql) + "\ncommit;\n" if sql else "select 'aucune position ouverte';\n")
@@ -503,7 +526,7 @@ def cmd_outcomes(a):
     sources = tuple(cfgv(cfg, "data_sources", list(market.DEFAULT_SOURCES)))
     active = {}
     for v in h["versions"]:
-        if v["status"] != "retired":
+        if v["status"] != "retired" and v["arm"] in ARMS:
             active[v["arm"]] = v
     now = now_ts()
     sql, n = [], 0
@@ -617,10 +640,10 @@ def cmd_adapt(a):
     versions = {v["id"]: v for v in h["versions"]}
     active = {}
     for v in h["versions"]:
-        if v["status"] != "retired":
+        if v["status"] != "retired" and v["arm"] in ARMS:
             active[v["arm"]] = v
     sig_by_id = {s["id"]: s for s in h["signals"]}
-    closed = [p for p in h["positions"] if p["status"] == "closed"]
+    closed = [p for p in h["positions"] if p["status"] == "closed" and p["arm"] in ARMS]
     cap0 = float(cfgv(cfg, "initial_capital_usdt", 1000))
 
     # ---- statistiques (toujours enregistrées)
@@ -799,7 +822,7 @@ def cmd_report(a):
     now = now_ts()
     week_start = datetime.fromtimestamp(now, tz=timezone.utc).date() - timedelta(days=6)
     wk0 = datetime.combine(week_start, datetime.min.time(), tzinfo=timezone.utc).timestamp()
-    pos = h["positions"]
+    pos = [p for p in h["positions"] if p["arm"] in ARMS]  # le portefeuille T a sa propre section
     closed = [p for p in pos if p["status"] == "closed"]
     week_closed = [p for p in closed if stats.parse_ts(p["closed_at"]) >= wk0]
     sig = h["signals"]
@@ -919,7 +942,7 @@ def cmd_report(a):
     L += [f"- Occasion manquée : {s['pair']} ({s['decision']}, {s['decision_reason'][:80]}…) a fait jusqu'à "
           f"{fmt_pct(s['outcome_max_gain_pct'])} en 10 j." for s in missed[:5]] or \
          ["- Aucune occasion manquée mesurée (les résultats à 10 jours arrivent après 10 jours)."]
-    open_now = [p for p in pos if p["status"] == "open"]
+    open_now = [p for p in pos if p["status"] == "open" and p.get("arm") != "T"]
     L.append(f"\nPositions ouvertes : {len(open_now)} — " +
              (", ".join(f"{p['pair']}({p['arm']})" for p in open_now) or "aucune"))
     # calendrier
@@ -944,6 +967,9 @@ def cmd_report(a):
                 if n_min < 100 else
                 "Même avec un échantillon correct, un passage au réel exigerait une relecture de GUARDRAILS.md "
                 "avec vous et un test à très petite taille ; ce système reste en démo."))
+    if getattr(a, "tiers_data", None):
+        from . import cli2ter
+        L.append("\n" + cli2ter.report_section(load_json_loose(a.tiers_data)))
     md = "\n".join(L) + "\n"
     write(a.out, md)
     metrics["generated_at"] = iso(now)
@@ -958,15 +984,15 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="engine.cli")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("scan"); s.add_argument("--state", required=True); s.add_argument("--out", required=True)
-    s = sub.add_parser("decide"); s.add_argument("--state", required=True)
+    s = sub.add_parser("decide"); s.add_argument("--state", required=True); s.add_argument("--tiers", action="store_true")
     s.add_argument("--candidates", required=True); s.add_argument("--out", required=True)
     s = sub.add_parser("check"); s.add_argument("--state", required=True); s.add_argument("--out", required=True)
-    s.add_argument("--daily", action="store_true")
+    s.add_argument("--daily", action="store_true"); s.add_argument("--tiers", action="store_true")
     s = sub.add_parser("outcomes"); s.add_argument("--history", required=True); s.add_argument("--out", required=True)
     s.add_argument("--limit", type=int, default=40)
     s = sub.add_parser("adapt"); s.add_argument("--history", required=True); s.add_argument("--out", required=True)
     s = sub.add_parser("report"); s.add_argument("--history", required=True); s.add_argument("--out", required=True)
-    s.add_argument("--calendar"); s.add_argument("--sql"); s.add_argument("--intro")
+    s.add_argument("--calendar"); s.add_argument("--sql"); s.add_argument("--intro"); s.add_argument("--tiers-data")
     a = ap.parse_args(argv)
     {"scan": cmd_scan, "decide": cmd_decide, "check": cmd_check, "outcomes": cmd_outcomes,
      "adapt": cmd_adapt, "report": cmd_report}[a.cmd](a)

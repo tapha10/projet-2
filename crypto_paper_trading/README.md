@@ -41,6 +41,12 @@ claude.ai (Routines) en cochant les connecteurs Supabase et Gmail, avec le même
 | 1. Analyse et entrées | `0 14 * * *` |
 | 2. Vérification | `0 8,20 * * *` et `30 14,23 * * *` |
 | 4. Rapport | `0 18 * * 0` |
+| 5. Préparation des données (2ter) | `0 4 * * *` et `0 10 * * 0` |
+| 6. Paliers et critères (2ter) | `30 5 * * *` et `0 11 * * 0` |
+
+Addendum 2ter (paliers P1-P4, tranches, découverte de critères) : `docs/audit_2ter.md`,
+`docs/tests_2ter.md`, migration `sql/004_tiers_2ter.sql`, modules `engine/tiers.py`,
+`engine/features.py`, `engine/discovery.py`, `engine/cli2ter.py`, `engine/dryrun.py`.
 
 Le serveur peut décaler l'heure de quelques minutes pour répartir la charge.
 

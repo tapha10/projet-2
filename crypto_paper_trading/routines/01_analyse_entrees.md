@@ -48,10 +48,16 @@
    d'une ligne. Mets à jour `$W/candidates.json` (Write ou petit script Python).
    Budget : environ 2 à 4 recherches par candidat, 40 au total maximum.
 4. **Décision et entrées virtuelles** :
-   `python3 -m engine.cli decide --state $W/state.json --candidates $W/candidates.json --out $W/entries.sql`
+   `python3 -m engine.cli decide --tiers --state $W/state.json --candidates $W/candidates.json --out $W/entries.sql`
    Le moteur applique les règles d'entrée (jamais la bougie du signal, réévaluation des
    wait, alertes, score) et les plafonds, lit le prix actuel, calcule stop / objectif /
-   taille / levier pour chaque bras. Exécute **tout** le contenu de `$W/entries.sql` avec
+   taille / levier pour chaque bras. **Addendum 2ter (`--tiers`)** : pour chaque signal (pris ou
+   refusé), il enregistre aussi l'instantané des critères dans `signal_features` (bougies fermées
+   avant la décision uniquement) et, pour chaque signal entré, ouvre une position du portefeuille
+   des paliers T (palier P1, levier <= 3x, tranches A/B/C selon `config.tier_state`).
+   Avant d'exécuter : `select paper_lock_acquire('tiers', 'routine1', 45);` (si `false`, réessaie
+   dans 10 minutes avec `send_later`) ; après : `select paper_lock_release('tiers', 'routine1');`.
+   Exécute **tout** le contenu de `$W/entries.sql` avec
    `execute_sql` (chaque bloc `do $$ … $$;` est indépendant ; les `skip` et `wait` sont
    aussi enregistrés). Les garde-fous de la base refusent toute entrée hors limites et
    l'écrivent dans `iteration_log`.
@@ -63,7 +69,7 @@
    from signals s where s.detected_at > now() - interval '2 hours' order by s.id;
    ```
    et `select rationale from iteration_log where created_at > now() - interval '2 hours' and change ? 'blocked_entry';`
-6. **Résumé** (dernier message, court, en français) : nombre de candidats, décisions
+6. **Résumé** (dernier message, court, en français) : position du portefeuille T le cas échéant, nombre de candidats, décisions
    enter / wait / skip avec une raison chacune, positions ouvertes par bras (taille, stop,
    objectif), sources de données utilisées, erreurs éventuelles. Rappelle que c'est une démo.
 

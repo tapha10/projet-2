@@ -29,7 +29,7 @@
 2. Si l'heure de Paris est entre 23:00 et 23:59 (vérifie avec `TZ=Europe/Paris date`),
    ajoute `--daily` à la commande suivante (ligne du jour dans `daily_results`).
    ```bash
-   python3 -m engine.cli check --state $W/state.json --out $W/check.sql [--daily]
+   python3 -m engine.cli check --tiers --state $W/state.json --out $W/check.sql [--daily]
    ```
    Le moteur récupère pour chaque position ouverte les bougies de **15 minutes** depuis
    `last_checked_at` (plus hauts et plus bas), et détecte dans l'ordre chronologique :
@@ -38,6 +38,11 @@
    `exit_price`, `exit_reason`, `pnl_usd`, `pnl_pct`, `r_multiple`, `fees_usd`
    (0,05 % par côté), funding estimé, `mfe_pct`, `mae_pct`, et prépare une ligne
    `price_checks` par position.
+   **Addendum 2ter (`--tiers`)** : les positions du portefeuille T sont suivies en tranches :
+   tranche A (2,5 R), B (6 R), C (coureur, stop chandelier 3 x ATR) ; après la sortie de A,
+   le stop du solde passe à l'entrée ; il remplit R, MFE (en % et en R), MAE et temps jusqu'au pic.
+   Verrou : `select paper_lock_acquire('tiers', 'routine2', 30);` avant l'exécution (si `false`,
+   réessaie dans 10 minutes avec `send_later`), `select paper_lock_release('tiers', 'routine2');` après.
 3. Exécute tout le contenu de `$W/check.sql` avec `execute_sql` (c'est une transaction
    `begin … commit`). En cas d'erreur, ré-exécute instruction par instruction et signale
    l'instruction refusée.

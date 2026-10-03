@@ -25,6 +25,12 @@
 
 ## Étapes
 
+0. **Addendum 2ter — état des paliers avant d'adapter** : lis
+   `select value from config where key = 'tier_state';` et
+   `select rationale, created_at from iteration_log where routine = 'routine6' order by id desc limit 1;`.
+   Les bras A/B/C s'adaptent exactement comme avant ; le portefeuille T n'entre pas dans leurs
+   statistiques. Mentionne l'état des paliers dans le résumé. Ne modifie jamais `tier_state`
+   (c'est le rôle de la routine 6).
 1. Exécute `select paper_history();` et écris le résultat dans `$W/history.json`.
 2. **Résultats à 10 jours de tous les signaux** (entrés ou non : occasions manquées,
    avance du signal, R contrefactuel par bras) :

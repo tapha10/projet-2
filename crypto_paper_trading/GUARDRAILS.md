@@ -74,3 +74,21 @@ funding réel (estimé à 0,01 % par 8 h). **Chaque rapport le dit.**
   la différence reste positif.
 - Retour à la version précédente si l'espérance baisse sur 20 trades.
 - L'auto-amélioration ne peut modifier ni ce fichier, ni les limites des sections 1 à 4.
+
+## 9. Addendum 2ter — portefeuille des paliers « T » (règles plus strictes, ajoutées le 03/10/2026 avec le propriétaire)
+
+Les paliers P1-P4 vivent dans un portefeuille virtuel séparé « T » (1 000 USDT). En plus des
+sections 1 à 8, toute position du portefeuille T respecte, et la base l'impose par trigger :
+
+| Règle | Limite |
+|---|---|
+| Levier | **3x** maximum |
+| Taille d'une position | **25 %** du capital T au maximum |
+| Notionnel total ouvert | **150 %** du capital T au maximum |
+| Liquidation estimée | au moins **3 fois** plus loin que le stop |
+| Moyenne à la baisse | interdite (un même pair ne peut pas être ouvert deux fois dans T) |
+| Risque par position (toutes tranches) | **1 %** au maximum ; palier P4 : 0,5 % au maximum |
+| Palier supérieur débloqué | commence à 0,25 % de risque, puis 0,5 % et 1 % après ≥ 3 semaines et ≥ 15 événements |
+
+Les bras A, B et C gardent leurs limites d'origine (section 3). La routine 6 n'ouvre jamais de
+position et ne peut pas modifier ces limites.
