@@ -171,7 +171,7 @@ def pos_from_row(p):
 
 def check_t(st, now, fetch, fee, fund, slip, refine=None, funding=None):
     """Suivi des positions du portefeuille T (tranches). Renvoie (sql, lignes, pnl latent)."""
-    sql, lines, unreal = [], [], 0.0
+    sql, lines, unreal, marks = [], [], 0.0, {}
     for p in [x for x in st.get("open_positions", []) if x["arm"] == "T"]:
         pos = pos_from_row(p)
         pos["through"] = stats.parse_ts(p["sim_through_at"]) if p.get("sim_through_at") else None
@@ -210,6 +210,7 @@ def check_t(st, now, fetch, fee, fund, slip, refine=None, funding=None):
                          f"R={res['r_multiple']}, par tranche {res['per_tranche']}")
         else:
             unreal += res["pnl_usd"]
+            marks[str(p["id"])] = round(res["pnl_usd"], 4)
             sql.append(f"update positions set {common} where id={p['id']} and status='open';")
             done = [f"{k}:{d['exit_reason']}" for k, d in pos["tranches"].items() if d["status"] == "closed"]
             lines.append(f"- #{p['id']} T {p['pair']} : ouverte, stop {pos['stop_price']:.6g}, "
@@ -219,7 +220,7 @@ def check_t(st, now, fetch, fee, fund, slip, refine=None, funding=None):
             from .cli import audit_note
             note += " | " + audit_note(pos["audit"])
         sql.append(f"insert into price_checks(position_id, last_price, note) values ({p['id']}, {q(last)}, {q(note)});")
-    return sql, lines, unreal
+    return sql, lines, unreal, marks
 
 
 # ============================================================ R5 : préparation des données

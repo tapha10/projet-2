@@ -190,6 +190,7 @@ class TestCheckEndToEnd(unittest.TestCase):
         self.assertIn("funding_usd=0.2,", sql)                           # seul le règlement d'avant la sortie
         self.assertIn("sim_through_at='1970-01-01T00:17:00+00:00'::timestamptz", sql)
         self.assertIn("rejouée(s) en 1 min", sql)
+        self.assertIn("select paper_set_marks(", sql)                    # marques à chaque passage
         # position restée ouverte : reprise exactement après la dernière bougie fermée
         rows15 = [k(0, 100, 116, 99, 110), k(900, 110, 111, 99, 100)]
         fine = minutes(0, [(100, 100)] * 7 + [(116, 110)] * 8)
@@ -200,6 +201,42 @@ class TestCheckEndToEnd(unittest.TestCase):
                              rows15, fine, 1900, [])
         self.assertIn("exit_reason='breakeven'", sql)                    # bougie 900 (99 <= 100), pas la 0
         self.assertIn("closed_at='1970-01-01T00:15:00+00:00'", sql)
+
+
+class TestMarks(unittest.TestCase):
+    """GUARDRAILS section 4 (relecture du 03/10/2026) : drawdown sur réalisé + latent."""
+
+    def st(self):
+        return dict(config={"fee_rate_per_side": 0.0, "data_sources": ["gate"]},
+                    arms={"A": dict(equity=1000, peak_equity=1000, drawdown=0, n_open=1, entries_today=0),
+                          "B": dict(equity=1000, peak_equity=1050, drawdown=0, n_open=1, entries_today=0),
+                          "C": dict(equity=1000, peak_equity=1000, drawdown=0, n_open=0, entries_today=0)},
+                    open_positions=[dict(id=7, arm="A", pair="XUSDT", entry_price=100, size_usd=1000),
+                                    dict(id=8, arm="B", pair="YUSDT", entry_price=100, size_usd=1000),
+                                    dict(id=9, arm="B", pair="ZUSDT", entry_price=100, size_usd=1000)])
+
+    def test_latent_counts_in_drawdown(self):
+        st = self.st()
+        px = {"XUSDT": 99.0, "YUSDT": 90.0}
+
+        def last(pair, sources=None):
+            if pair not in px:
+                raise market.DataError("pas de prix")
+            return px[pair], "test"
+        with mock.patch.object(market, "last_price", last):
+            marks, notes = cli.mark_open_positions(st, ("gate",), 0)
+        self.assertEqual(marks["A"], {"7": -10.0})
+        self.assertEqual(marks["B"], {"8": -100.0})                     # 9 sans prix : non écrasée
+        self.assertIn("#9", notes[0])
+        self.assertAlmostEqual(st["arms"]["B"]["drawdown"], 1 - 900 / 1050)   # 14,3 % : sous 15 %
+        st["arms"]["B"]["peak_equity"] = 1100
+        with mock.patch.object(market, "last_price", last):
+            cli.mark_open_positions(st, ("gate",), 0)
+        self.assertGreater(st["arms"]["B"]["drawdown"], 0.15)
+        cap = cli.arm_capacity(dict(st, config={}))
+        self.assertEqual(cap["B"][0], 0)
+        self.assertIn("suspendu", cap["B"][1])
+        self.assertGreater(cap["A"][0], 0)
 
 
 if __name__ == "__main__":

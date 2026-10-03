@@ -224,3 +224,43 @@ def glance(arms, t_book, per_tier, no_entry_reason):
         L.append(f"| Palier {tier} (ombre) | {desc} | – | – | – | 👻 Simulé sans capital : {n}/{need} résultats "
                  f"indépendants ; aucune décision avant {need}. |")
     return L
+
+
+# ------------------------------------------------ seuil de passage au réel (GUARDRAILS 1 bis)
+GATE = dict(min_trades=50, min_weeks=12, ci_alpha=0.10, max_drawdown=0.15)
+
+
+def go_live_gate(arm_trades, daily, demo_started_ts, now_ts, incidents, gate=GATE):
+    """Où en est chaque bras par rapport au seuil écrit dans GUARDRAILS.md (section 1 bis).
+    arm_trades : {bras: [positions fermées]} ; daily : lignes daily_results ;
+    incidents : nombre de passages en erreur non expliqués. Renvoie des lignes markdown.
+    Atteindre le seuil n'autorise RIEN : il ouvre seulement une nouvelle relecture."""
+    weeks = max(0.0, (now_ts - demo_started_ts) / (7 * 86400)) if demo_started_ts is not None else 0.0
+    L = ["| Bras | Trades fermés | Semaines | R moyen (IC 90 %) | Drawdown max | Verdict |", "|---|---|---|---|---|---|"]
+    for arm, trades in arm_trades.items():
+        rs = [float(t["r_multiple"]) for t in trades if t.get("r_multiple") is not None]
+        ci = stats.bootstrap_mean_ci(rs, alpha=gate["ci_alpha"]) if len(rs) >= 2 else None
+        dd = 0.0
+        for d in daily:
+            ba = d.get("by_arm") or {}
+            if isinstance(ba, dict) and arm in ba:
+                dd = max(dd, float(ba[arm].get("drawdown") or 0))
+        eq = peak = 1.0
+        for t in sorted(trades, key=lambda t: str(t.get("closed_at"))):
+            eq += float(t.get("pnl_usd") or 0) / 1000
+            peak = max(peak, eq)
+            dd = max(dd, 1 - eq / peak)
+        ok = dict(n=len(rs) >= gate["min_trades"], w=weeks >= gate["min_weeks"],
+                  r=bool(ci and ci["lo"] > 0), dd=dd < gate["max_drawdown"], inc=incidents == 0)
+        missing = [txt for key, txt in (("n", f"{gate['min_trades']} trades"), ("w", f"{gate['min_weeks']} semaines"),
+                                        ("r", "R moyen > 0 avec IC entièrement positif"),
+                                        ("dd", "drawdown < 15 %"), ("inc", "aucun incident non expliqué"))
+                   if not ok[key]]
+        verdict = "✅ seuil atteint : relecture à prévoir" if not missing else "⏳ manque : " + ", ".join(missing)
+        rtxt = f"{ci['mean']:+.2f} [{ci['lo']:+.2f} ; {ci['hi']:+.2f}]" if ci else "—"
+        L.append(f"| {arm} | {len(rs)}/{gate['min_trades']} | {weeks:.1f}/{gate['min_weeks']} | {rtxt} | "
+                 f"{dd:.1%} | {verdict} |")
+    L.append("")
+    L.append(f"Incidents de données ou d'exécution non expliqués : **{incidents}**. Atteindre le seuil n'autorise "
+             "aucun passage au réel : cela ouvre seulement une nouvelle relecture de GUARDRAILS.md avec le propriétaire.")
+    return L

@@ -84,7 +84,7 @@ python3 -m engine.import_reference base_gainers_2026-10-03.xlsx --out ref.sql   
 - `config.mode` ne peut valoir que `paper` ; les limites de risque ne peuvent pas être relâchées.
 - Insertion d'une position refusée si : risque > 1 % du capital du bras, levier > 10x
   (A > 2x), plus de 8 positions ouvertes, plus de 3 entrées dans la journée (Paris),
-  pair déjà ouvert dans le bras, drawdown du bras > 15 %, stop/objectif incohérents.
+  pair déjà ouvert dans le bras, drawdown du bras (réalisé + latent) > 15 %, stop/objectif incohérents.
 - Paramètres d'entrée immuables, stop qui ne peut que monter, pas de réouverture.
 
 ## Données

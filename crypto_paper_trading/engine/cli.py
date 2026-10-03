@@ -18,7 +18,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-from . import announcements, early, indicators, market, recap, risk, simulate, stats
+from . import announcements, early, indicators, market, recap, risk, simulate, stats, tiers
 from .sqlgen import load_json_loose, q, qarr, qts
 
 ARMS = ("A", "B", "C")
@@ -289,6 +289,36 @@ def score_of(types, alerts, weights):
     return round(sum(float(weights.get(t, 0)) for t in set(types) | set(alerts)), 3)
 
 
+def mark_open_positions(st, sources, now):
+    """PnL latent de chaque position ouverte au dernier prix, et drawdown réalisé + latent
+    par bras recalculé dans st (GUARDRAILS section 4). Renvoie (marques, notes)."""
+    cfg = st["config"]
+    fee = float(cfgv(cfg, "fee_rate_per_side", 0.0005))
+    fund = float(cfgv(cfg, "funding_rate_8h_estimate", 0.0001))
+    marks, notes = {arm: {} for arm in ARMS + ("T",)}, []
+    for p in st.get("open_positions", []):
+        try:
+            last, _ = market.last_price(p["pair"], tuple(cfgv(cfg, "data_sources", list(market.DEFAULT_SOURCES))))
+        except Exception as e:
+            notes.append(f"- latent de #{p['id']} {p['pair']} inconnu ({str(e)[:60]}) : dernière marque gardée")
+            continue
+        if p["arm"] == "T":
+            from . import cli2ter
+            u = tiers.settle(cli2ter.pos_from_row(p), fee, fund, last, now)["pnl_usd"]
+        else:
+            entry, size = float(p["entry_price"]), float(p["size_usd"])
+            u = size / entry * (last - entry) - fee * size
+        marks.setdefault(p["arm"], {})[str(p["id"])] = round(u, 4)
+    for arm, info in (st.get("arms") or {}).items():
+        if arm not in marks:
+            continue
+        eq = float(info.get("equity") or 0) + sum(marks[arm].values())
+        peak = max(float(info.get("peak_equity") or 0), eq)
+        if peak > 0:
+            info["drawdown"] = 1 - eq / peak
+    return marks, notes  # positions sans prix : la base garde leur dernière marque (fusion)
+
+
 def arm_capacity(st):
     """Places disponibles par bras aujourd'hui, compte tenu de tous les plafonds."""
     cfg = st["config"]
@@ -410,6 +440,7 @@ def cmd_decide(a):
     weights = {k: v for k, v in cfgv(cfg, "signal_weights", {}).items() if k != "version"}
     sources = tuple(cfgv(cfg, "data_sources", list(market.DEFAULT_SOURCES)))
     slip = float(cfgv(cfg, "slippage_pct", 0.001))
+    marks, mark_notes = mark_open_positions(st, sources, now_ts())
     cap = arm_capacity(st)
     remaining = {arm: cap[arm][0] for arm in ARMS}
     open_pairs = {(p["arm"], p["pair"]) for p in st.get("open_positions", [])}
@@ -454,7 +485,7 @@ def cmd_decide(a):
                "weights_version": cfgv(cfg, "signal_weights", {}).get("version")},
             reevaluate_after=now + 0.8 * DAY if dec == "wait" else None))
 
-    blocks, summary = [], []
+    blocks, summary = [f"select paper_set_marks({q(marks)});\n"], list(mark_notes)
     if a.tiers:  # addendum 2ter (n'altère pas les décisions ni les positions A/B/C)
         from . import cli2ter
         fetch2 = cli2ter.default_fetch(sources)
@@ -583,6 +614,7 @@ def cmd_check(a):
     now = now_ts()
     sql, lines = [], []
     unreal = {arm: 0.0 for arm in ARMS}
+    marks = {arm: {} for arm in ARMS + ("T",)}
     for p in st.get("open_positions", []):
         if p["arm"] == "T":
             continue  # portefeuille des paliers : suivi en tranches par cli2ter.check_t
@@ -621,7 +653,9 @@ def cmd_check(a):
         else:
             if last is not None:
                 qty = ps.size_usd / ps.entry
-                unreal[p["arm"]] += qty * (last - ps.entry) - fee * ps.size_usd
+                u = qty * (last - ps.entry) - fee * ps.size_usd
+                unreal[p["arm"]] += u
+                marks[p["arm"]][str(p["id"])] = round(u, 4)
             sql.append(
                 f"update positions set stop_price={q(ps.stop)}, highest_price={q(ps.highest)}, "
                 f"mfe_pct={q(round(ps.highest / ps.entry - 1, 6))}, "
@@ -635,12 +669,14 @@ def cmd_check(a):
                    f"values ({p['id']}, {q(last)}, {q(hi)}, {q(lo)}, {q(note)});")
     if a.tiers:
         from . import cli2ter
-        sql_t, lines_t, unreal["T"] = cli2ter.check_t(
+        sql_t, lines_t, unreal["T"], marks["T"] = cli2ter.check_t(
             st, now, cli2ter.default_fetch(sources), fee, fund, slip,
             refine=lambda pair: fine_fetch(pair, sources),
             funding=lambda pair, t0, t1: funding_rates(pair, t0, t1)[0])
         sql += sql_t
         lines += lines_t
+    # PnL latent par position : compté dans le drawdown (GUARDRAILS section 4, réalisé + latent)
+    sql.append(f"select paper_set_marks({q(marks)});")
     if a.daily:
         sql.append(f"select paper_record_daily({q({k: round(v, 4) for k, v in unreal.items()})});")
     write(a.out, "begin;\n" + "\n".join(sql) + "\ncommit;\n" if sql else "select 'aucune position ouverte';\n")
@@ -1007,10 +1043,14 @@ def cmd_report(a):
         for p in sorted([p for p in closed if p["arm"] == arm], key=lambda p: stats.parse_ts(p["closed_at"])):
             eqx += float(p["pnl_usd"] or 0)
             peak = max(peak, eqx)
+        dd = (peak - eqx) / peak if peak > 0 else 0.0
+        last_day = max(daily, key=lambda d: str(d.get("date")), default=None)
+        if last_day and isinstance(last_day.get("by_arm"), dict) and arm in last_day["by_arm"]:
+            dd = max(dd, float(last_day["by_arm"][arm].get("drawdown") or 0))   # réalisé + latent (section 4)
         arms_g[f"Bras {arm}"] = dict(desc=arm_desc[arm], open=sum(1 for p in st_arm if p["status"] == "open"),
                                     closed_week=sum(1 for p in week_closed if p["arm"] == arm),
                                     pnl_week=sum(float(p["pnl_usd"] or 0) for p in week_closed if p["arm"] == arm),
-                                    halted=peak > 0 and (peak - eqx) / peak > 0.15)
+                                    halted=dd > 0.15)
     tpos = [p for p in h["positions"] if p.get("arm") == "T"]
     t_week = [p for p in tpos if p["status"] == "closed" and stats.parse_ts(p["closed_at"]) >= wk0]
     t_book = dict(desc="stop 8-12 % / 2,5 R, tranches, levier ≤ 3x", open=sum(1 for p in tpos if p["status"] == "open"),
@@ -1159,6 +1199,12 @@ def cmd_report(a):
     L.append(cal or "Calendrier non disponible (recherche web non effectuée).")
     # conclusion
     n_min = min(metrics["by_arm"][x]["n"] for x in ARMS)
+    L.append("\n## Seuil de passage au réel (GUARDRAILS section 1 bis)\n")
+    started = cfgv(cfg, "demo_started_at")
+    incidents = sum(1 for x in h.get("iteration_log", [])
+                    if isinstance(x.get("change"), dict) and x["change"].get("status") not in (None, "ok"))
+    L += recap.go_live_gate({arm: [p for p in closed if p["arm"] == arm] for arm in ARMS}, daily,
+                            stats.parse_ts(started) if started else None, now, incidents)
     L.append("\n## 8. Limites et recommandation\n")
     L.append("- Démo : glissement réel et profondeur de marché ignorés (forfait 0,1 %) ; prix, bougies 1 min et "
              "funding viennent de sources publiques (Gate.io en priorité, puis OKX, MEXC, KuCoin), pas de Bybit.")

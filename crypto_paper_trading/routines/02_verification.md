@@ -38,7 +38,8 @@
    l'ordre reste inconnu à la minute), passage à l'équilibre, stop suiveur, durée maximale
    (10 jours). Il calcule `exit_price`, `exit_reason`, `pnl_usd`, `pnl_pct`, `r_multiple`,
    `fees_usd` (0,055 % par côté), funding réellement réglé (Gate), `mfe_pct`, `mae_pct`,
-   met à jour `sim_through_at` et prépare une ligne `price_checks` par position (la note
+   met à jour `sim_through_at`, enregistre le latent de chaque position ouverte (`paper_set_marks`,
+   compté dans l'arrêt à −15 %) et prépare une ligne `price_checks` par position (la note
    dit combien de bougies ont été rejouées en 1 min et la source du funding).
    **Addendum 2ter (`--tiers`)** : les positions du portefeuille T sont suivies en tranches :
    tranche A (2,5 R), B (6 R), C (coureur, stop chandelier 3 x ATR) ; après la sortie de A,

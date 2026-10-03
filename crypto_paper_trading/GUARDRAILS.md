@@ -15,6 +15,24 @@
 - Même si on le demande plus tard, **aucune fonction de trading réel n'est ajoutée**
   sans avoir relu ce fichier avec le propriétaire.
 
+## 1 bis. Seuil avant toute discussion sur le réel (relecture du 03/10/2026)
+
+Le système reste en démo. Une nouvelle relecture de ce fichier pour envisager le réel
+n'est possible que lorsqu'**un bras** remplit **toutes** ces conditions :
+
+| Condition | Seuil |
+|---|---|
+| Trades fermés du bras | **≥ 50** |
+| Durée de la démo (depuis `config.demo_started_at`, le 03/10/2026) | **≥ 12 semaines** |
+| R moyen par trade | **> 0** et intervalle de confiance bootstrap à **90 %** entièrement positif |
+| Drawdown maximum (réalisé + latent) | **< 15 %** |
+| Incidents de données ou d'exécution | **aucun** non expliqué |
+
+Le rapport du dimanche affiche où en est chaque bras. Atteindre le seuil **n'autorise
+rien** : il permet seulement de rouvrir la discussion, en relisant ce fichier ensemble.
+Les résultats de démo viennent des prix Gate/OKX et non de Bybit (bloqué depuis le
+cloud) ; les écarts connus sont listés dans `docs/audit_bougies.md`.
+
 ## 2. Capital virtuel
 
 - Capital de départ : **1 000 USDT par bras** (clé `initial_capital_usdt` de la table `config`).
@@ -41,9 +59,14 @@ d'entrée modifiés, et son stop ne peut que monter (`positions_guardrails_updat
 
 ## 4. Drawdown
 
-Si le capital réalisé d'un bras recule de **plus de 15 %** depuis son plus haut,
-les nouvelles entrées de ce bras sont **suspendues** (refus par la base), et le
-rapport hebdomadaire affiche une alerte. La reprise demande une décision humaine.
+Si le capital **réalisé + latent** d'un bras (positions fermées + PnL non réalisé des
+positions ouvertes) recule de **plus de 15 %** depuis son plus haut, les nouvelles
+entrées de ce bras sont **suspendues** (refus par la base), et le rapport hebdomadaire
+affiche une alerte. La reprise demande une décision humaine.
+Le latent de chaque position est enregistré (`arm_marks`, `paper_set_marks`) à chaque
+vérification et juste avant chaque décision d'entrée ; une position fermée cesse d'être
+comptée en latent. La taille des positions reste calculée sur le capital réalisé.
+(Relecture du 03/10/2026 : auparavant, seul le capital réalisé comptait.)
 
 ## 5. Secrets
 
@@ -62,8 +85,11 @@ garde-fou est écrite dans `iteration_log`. Chaque changement de stratégie est
 ## 7. Honnêteté des résultats
 
 Aucun résultat n'est garanti. Les chiffres en démo ignorent une partie du
-glissement (forfait de 0,1 % seulement), de la profondeur de marché et du
-funding réel (estimé à 0,01 % par 8 h). **Chaque rapport le dit.**
+glissement réel (forfait de 0,1 % par exécution, objectif compris) et la profondeur
+de marché. Les prix, les bougies 1 minute et le funding réellement réglé viennent de
+sources publiques (Gate.io, puis OKX), **pas de Bybit** ; les frais sont ceux de Bybit
+(0,055 % par côté). L'ordre stop / objectif est tranché à la minute ; s'il reste
+inconnu, le stop compte d'abord. Détail : `docs/audit_bougies.md`. **Chaque rapport le dit.**
 
 ## 8. Limites de l'auto-amélioration
 
@@ -92,3 +118,10 @@ sections 1 à 8, toute position du portefeuille T respecte, et la base l'impose 
 
 Les bras A, B et C gardent leurs limites d'origine (section 3). La routine 6 n'ouvre jamais de
 position et ne peut pas modifier ces limites.
+
+## Relectures avec le propriétaire
+
+| Date | Décisions |
+|---|---|
+| 03/10/2026 | Addendum 2ter (section 9). |
+| 03/10/2026 | Démo maintenue ; seuil de la section 1 bis (50 trades, 12 semaines, IC 90 % > 0, drawdown < 15 %, aucun incident) ; limites de la section 3 inchangées ; drawdown sur réalisé + latent (section 4) ; section 7 mise à jour après l'audit des bougies ; section 8 inchangée. |

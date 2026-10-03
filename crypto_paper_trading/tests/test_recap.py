@@ -71,6 +71,23 @@ class TestReasons(unittest.TestCase):
         self.assertEqual(recap.crit_fr("btc_haussier & volume_x2"), "BTC haussier + volume x2")
 
 
+class TestGoLiveGate(unittest.TestCase):
+    def test_gate(self):
+        good = [dict(r_multiple=1.0 if i % 3 else -1.0, pnl_usd=5.0 if i % 3 else -10.0,
+                     closed_at=f"2026-10-{i % 28 + 1:02d}") for i in range(60)]
+        few = good[:10]
+        md = "\n".join(recap.go_live_gate({"A": good, "B": few}, [], 0, 13 * 7 * 86400, 0))
+        self.assertIn("| A | 60/50 | 13.0/12 |", md)
+        self.assertIn("✅ seuil atteint", md)
+        self.assertIn("manque : 50 trades", md)
+        md = "\n".join(recap.go_live_gate({"A": good}, [], 0, 5 * 7 * 86400, 2))
+        self.assertIn("12 semaines", md)
+        self.assertIn("aucun incident non expliqué", md)
+        self.assertIn("n'autorise aucun passage au réel", md)
+        bad_dd = [dict(by_arm={"A": {"drawdown": 0.2}})]
+        self.assertIn("drawdown < 15 %", "\n".join(recap.go_live_gate({"A": good}, bad_dd, 0, 13 * 7 * 86400, 0)))
+
+
 class TestMailFormat(unittest.TestCase):
     def test_convert(self):
         md = ("# Titre\n\n> **DÉMO** avertissement\n\n## Section\n\n- point **gras**\n- [lien](https://a.b)\n\n"

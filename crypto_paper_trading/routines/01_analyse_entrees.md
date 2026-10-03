@@ -26,7 +26,8 @@
 ## Étapes
 
 1. **État** : exécute `select paper_state();` et écris le résultat dans `$W/state.json`.
-   Note les bras suspendus (drawdown > 15 %) et les places restantes.
+   Note les bras suspendus (drawdown réalisé + latent > 15 % ; le moteur remarque le latent au
+   dernier prix avant de décider, et le SQL généré commence par `paper_set_marks`) et les places restantes.
 2. **Collecte marché** :
    `python3 -m engine.cli scan --state $W/state.json --out $W/candidates.json`
    (sources publiques essayées dans l'ordre Gate → OKX → MEXC → KuCoin ; Binance et Bybit
