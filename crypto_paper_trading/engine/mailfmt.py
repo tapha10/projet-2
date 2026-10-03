@@ -17,25 +17,26 @@ C = dict(bg="#f4f6f8", card="#ffffff", text="#1f2933", muted="#52606d", accent="
 def inline(t):
     t = html.escape(t, quote=False)
     t = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)",
-               lambda m: f'<a href="{html.escape(m.group(2))}" style="color:{C["accent"]};text-decoration:none">{m.group(1)}</a>', t)
+               lambda m: f'<a href="{html.escape(m.group(2))}">{m.group(1)}</a>', t)
     t = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", t)
     t = re.sub(r"(?<![*\w])\*(?!\s)(.+?)(?<!\s)\*(?!\w)", r"<em>\1</em>", t)
-    t = re.sub(r"`([^`]+)`", r'<code style="background:#eef2f7;padding:1px 4px;border-radius:3px">\1</code>', t)
+    t = re.sub(r"`([^`]+)`", r"<code>\1</code>", t)
     return t
 
 
 def table(rows):
     cells = [[c.strip() for c in r.strip().strip("|").split("|")] for r in rows]
     head, body = cells[0], [r for r in cells[2:]]
-    th = "".join(f'<th style="text-align:left;padding:6px 8px;background:{C["head"]};border-bottom:1px solid {C["border"]};'
-                 f'font-size:12px;color:{C["muted"]};white-space:nowrap">{inline(h)}</th>' for h in head)
-    trs = []
-    for i, r in enumerate(body):
-        tds = "".join(f'<td style="padding:6px 8px;border-bottom:1px solid {C["border"]};font-size:13px;'
-                      f'vertical-align:top">{inline(c)}</td>' for c in r)
-        trs.append(f"<tr>{tds}</tr>")
-    return (f'<div style="overflow-x:auto"><table cellspacing="0" cellpadding="0" style="border-collapse:collapse;'
-            f'width:100%;margin:8px 0 14px">{"<tr>" + th + "</tr>"}{"".join(trs)}</table></div>')
+    th = "".join(f"<th>{inline(h)}</th>" for h in head)
+    trs = "".join("<tr>" + "".join(f"<td>{inline(c)}</td>" for c in r) + "</tr>" for r in body)
+    return f'<table class="t" cellspacing="0" cellpadding="0"><tr>{th}</tr>{trs}</table>'
+
+
+STYLE = (f"<style>table.t{{border-collapse:collapse;width:100%;margin:8px 0 14px}}"
+         f"table.t th{{text-align:left;padding:6px 8px;background:{C['head']};border-bottom:1px solid {C['border']};"
+         f"font-size:12px;color:{C['muted']}}}"
+         f"table.t td{{padding:6px 8px;border-bottom:1px solid {C['border']};font-size:13px;vertical-align:top}}"
+         f"p{{margin:6px 0 10px;font-size:14px;line-height:1.5}}li{{margin:3px 0}}a{{color:{C['accent']};text-decoration:none}}code{{background:#eef2f7;padding:1px 4px;border-radius:3px}}</style>")
 
 
 def convert(md):
@@ -66,15 +67,15 @@ def convert(md):
         elif s.startswith("- "):
             items = []
             while i < len(lines) and lines[i].strip().startswith("- "):
-                items.append(f'<li style="margin:3px 0">{inline(lines[i].strip()[2:])}</li>')
+                items.append(f'<li>{inline(lines[i].strip()[2:])}</li>')
                 i += 1
             out.append(f'<ul style="margin:6px 0 12px;padding-left:20px;font-size:14px">{"".join(items)}</ul>')
             continue
         else:
-            out.append(f'<p style="margin:6px 0 10px;font-size:14px;line-height:1.5">{inline(s)}</p>')
+            out.append(f"<p>{inline(s)}</p>")
         i += 1
     body = "\n".join(out)
-    return (f'<div style="background:{C["bg"]};padding:16px 8px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
+    return STYLE + (f'<div style="background:{C["bg"]};padding:16px 8px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
             f'color:{C["text"]}"><div style="max-width:860px;margin:0 auto;background:{C["card"]};border:1px solid {C["border"]};'
             f'border-radius:8px;padding:20px 18px">{body}</div></div>')
 

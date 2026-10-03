@@ -77,7 +77,7 @@ class TestMailFormat(unittest.TestCase):
               "| A | B |\n|---|---|\n| 1 | <script> |\n\nTexte *italique* et `code`.")
         h = mailfmt.convert(md)
         for frag in ("<h1", "<h2", "<ul", "<strong>gras</strong>", 'href="https://a.b"', "<table", "<em>italique</em>",
-                     "<code", "border-left:4px solid"):
+                     "<code>", "border-left:4px solid", "<style>"):
             self.assertIn(frag, h)
         self.assertNotIn("<script>", h)                              # échappement HTML
         self.assertIn("&lt;script&gt;", h)
