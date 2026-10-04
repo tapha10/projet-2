@@ -1132,6 +1132,19 @@ def cmd_report(a):
     L.append("")
     if intro:
         L.append("## Lecture de la semaine\n\n" + intro + "\n")
+    # positions ouvertes en détail, signaux en attente, échéances (demande du propriétaire, 04/10/2026)
+    from . import positions_md
+    open_all = [p for p in h["positions"] if p["status"] == "open"]
+    prices = {}
+    if open_all:
+        try:
+            tk, _ = market.tickers(tuple(cfgv(cfg, "data_sources", list(market.DEFAULT_SOURCES))))
+            prices = {t["pair"]: t["last"] for t in tk if t["pair"] in {p["pair"] for p in open_all} and t["last"]}
+        except Exception:
+            prices = {}
+    L += positions_md.positions_section(open_all, sig, prices, now)
+    L += positions_md.waits_section(sig, now, cfgv(cfg, "entry_rules", {}) or {})
+    L += positions_md.deadlines_section(open_all, sig, lambda k: cfgv(cfg, k), now)
     # capital
     L.append("## 1. Capital virtuel\n")
     L.append("Chaque bras est un portefeuille virtuel séparé de "
@@ -1299,11 +1312,27 @@ def cmd_report(a):
             L.append(f"\n## Chaînes de victoires\n\nSection indisponible : {str(e)[:160]}")
     md = "\n".join(L) + "\n"
     write(a.out, md)
+    if getattr(a, "email_out", None):
+        write(a.email_out, email_md(md))
     metrics["generated_at"] = iso(now)
     if a.sql:
         write(a.sql, f"insert into weekly_reports(week_start, report_md, metrics) values "
                      f"({q(week_start.isoformat())}::date, {q(md)}, {q(metrics)});\n")
     print(md)
+
+
+EMAIL_SECTIONS = ("En bref", "Lecture de la semaine", "Mes positions ouvertes", "En attente", "Prochaines échéances",
+                  "7. Calendrier", "Seuil de passage")
+
+
+def email_md(md):
+    """Version courriel : l'essentiel (positions, attentes, échéances, calendrier, seuil) ; le rapport complet
+    reste dans weekly_reports."""
+    head, *secs = md.split("\n## ")
+    keep = [x for x in secs if x.startswith(EMAIL_SECTIONS)]
+    out = head.rstrip() + "\n\n## " + "\n\n## ".join(k.rstrip() for k in keep)
+    return out + ("\n\n---\n*Version courte envoyée par courriel. Le rapport complet (comparaison des bras, détail de chaque "
+                  "signal, paliers P1-P4, chaînes de victoires) est enregistré dans Supabase, table weekly_reports.*\n")
 
 
 # =================================================================== MAIN
@@ -1321,6 +1350,7 @@ def main(argv=None):
     s = sub.add_parser("adapt"); s.add_argument("--history", required=True); s.add_argument("--out", required=True)
     s = sub.add_parser("report"); s.add_argument("--history", required=True); s.add_argument("--out", required=True)
     s.add_argument("--calendar"); s.add_argument("--sql"); s.add_argument("--intro"); s.add_argument("--tiers-data"); s.add_argument("--chains-data")
+    s.add_argument("--email-out", help="version courte pour le courriel (markdown)")
     a = ap.parse_args(argv)
     {"scan": cmd_scan, "decide": cmd_decide, "check": cmd_check, "outcomes": cmd_outcomes,
      "adapt": cmd_adapt, "report": cmd_report}[a.cmd](a)

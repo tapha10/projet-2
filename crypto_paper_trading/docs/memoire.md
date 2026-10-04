@@ -64,6 +64,9 @@ Corrections (GUARDRAILS section 8) :
 
 ## 5. Problèmes connus et précautions
 
+- Gros résultats SQL : les faire enregistrer dans un fichier (rembourrage `repeat('.', 60000)`) puis
+  `python3 -m engine.mcp_extract` (voir `routines/_contexte_commun.md`) au lieu de les recopier.
+
 - Le connecteur Supabase coupe une requête après ~60 s : découper le SQL généré
   (blocs `do $$ … $$;`), utiliser `set lock_timeout = '5s'` pour les changements de schéma, et
   vérifier ensuite ce qui a été appliqué.

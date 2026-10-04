@@ -48,12 +48,16 @@
    prudente sur le réel.
 4. Relis `$W/report.md`. Écris dans `$W/intro.md` un paragraphe « Lecture de la semaine »
    (3 à 5 phrases factuelles tirées du rapport, sans promesse de gain), puis régénère :
-   `python3 -m engine.cli report --history $W/history.json --calendar $W/calendar.md --tiers-data $W/tiers.json --chains-data $W/chains.json --intro $W/intro.md --out $W/report.md --sql $W/report.sql`
+   `python3 -m engine.cli report --history $W/history.json --calendar $W/calendar.md --tiers-data $W/tiers.json --chains-data $W/chains.json --intro $W/intro.md --out $W/report.md --sql $W/report.sql --email-out $W/email.md`
    L'avertissement démo et la section des limites restent toujours dans le rapport.
 5. Exécute `$W/report.sql` (enregistre le rapport dans `weekly_reports`).
 6. **Envoi** à l'adresse de `config.report_email` (moustaphatall38@gmail.com) avec le
    connecteur Gmail (`send_message` ; charge-le via ToolSearch `+Gmail send`) :
-   - convertis le rapport en HTML : `python3 -m engine.mailfmt $W/report.md > $W/report.html` ;
+   - convertis la **version courriel** en HTML : `python3 -m engine.mailfmt $W/email.md > $W/report.html`
+     (en bref, stratégies, lecture de la semaine, **chaque position ouverte avec entrée, dernier prix, SL et TP
+     avec leur distance, progression, taille, levier, risque, latent, liquidation, règles actives et date de
+     sortie maximale**, signaux en attente avec la date de réévaluation, prochaines échéances, calendrier, seuil
+     de passage au réel ; le rapport complet reste dans `weekly_reports`) ;
    - `subject` : `[DÉMO] Rapport paper trading crypto — semaine du <date>` ;
    - `htmlBody` : le contenu de `$W/report.html` (mise en forme : en bref, chaque stratégie en un
      coup d'œil, ce que le système a vu et pourquoi, détail de chaque signal avec raison en clair
