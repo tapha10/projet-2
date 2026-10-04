@@ -253,7 +253,8 @@ def daily(data, fetch, now, attempt=1, hist_p_levels=None):
         acts.append(dict(kind="sim_run", source="shadow", params_id=row["id"], variant=p["name"], s=s1, s2=s2,
                          period=_period(evs)))
         lv = hist_levels.get(p["name"]) or {k: (v["wins"], v["n"]) for k, v in s1["p_win_by_level"].items()}
-        mc = C.monte_carlo({int(k): tuple(v) for k, v in lv.items()}, p, n_chains=10000, seed=row["id"])
+        mc = C.monte_carlo({int(k): tuple(v) for k, v in lv.items()}, p, n_chains=10000, seed=row["id"],
+                           win_r=s1.get("mean_win_r"), loss_r=-1.0, r_levels=s1.get("r_by_level"))
         acts.append(dict(kind="sim_run", source="monte_carlo", params_id=row["id"], variant=p["name"], mc=mc))
         pl = {k: v["p"] for k, v in s1["p_win_by_level"].items()}
         old = prev.get((p["name"], "shadow"))
@@ -308,7 +309,8 @@ def weekly(data, hist, now, live_evs=None):
         good_test, why_test = C.beats_references(ev_test)
         lv = {k: (v["wins"], v["n"]) for k, v in ev["variant"]["p_win_by_level"].items()}
         mc = C.monte_carlo(lv, p, n_chains=10000, seed=row["id"],
-                           chains_per_year=max(12, int(12 * (ev["variant"]["chains_per_month"] or 1))))
+                           chains_per_year=max(12, int(12 * (ev["variant"]["chains_per_month"] or 1))),
+                           win_r=ev["slip2"].get("mean_win_r"), loss_r=-1.0, r_levels=ev["slip2"].get("r_by_level"))
         res = C.run_chains(evs, p)
         indep = len({s.get("cluster") or (s["pair"], int(s["ts"] // (10 * DAY))) for s in res["steps"]
                      if s["k"] >= 2 and "pnl" in s})

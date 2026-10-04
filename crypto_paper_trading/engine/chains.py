@@ -367,7 +367,16 @@ def summarize(res, p, capital=1000.0, months=None):
                 p_win_by_level={k: dict(wins=w, n=m, p=w / m if m else None) for k, (w, m) in sorted(by_level.items())},
                 by_regime={g: dict(wins=w, n=m, pnl=round(x, 4)) for g, (w, m, x) in by_regime.items()},
                 independent_full=sum(1 for c in ch if c.level >= p["chain_len"] and independent_wins(c) >= p["chain_len"]),
+                r_by_level={k: (_mean([s["r"] for s in res["steps"] if "pnl" in s and s["k"] == k and s["win"]]),
+                                _mean([s["r"] for s in res["steps"] if "pnl" in s and s["k"] == k and not s["win"]]))
+                            for k in sorted({s["k"] for s in res["steps"]})},
+                mean_win_r=_mean([s["r"] for s in res["steps"] if "pnl" in s and s["win"]]),
+                mean_loss_r=_mean([s["r"] for s in res["steps"] if "pnl" in s and not s["win"]]),
                 reduced_steps=sum(1 for s in res["steps"] if s.get("reduced")))
+
+
+def _mean(xs):
+    return sum(xs) / len(xs) if xs else None
 
 
 def evaluate(events, p, capital=1000.0, n_random=30, seed=7):
@@ -483,7 +492,7 @@ def breakeven(p, win_r=None, loss_r=-1.0):
 
 
 def monte_carlo(p_levels, p, n_chains=10000, seed=1, chains_per_year=60, capital=1000.0, win_r=None,
-                loss_r=-1.0, n_paths=500):
+                loss_r=-1.0, n_paths=500, r_levels=None):
     """10 000 chaînes à partir des taux observés par niveau (wins, n) avec incertitude (Beta).
     Sert à estimer la plage normale et le risque de drawdown, JAMAIS à prouver qu'une stratégie marche."""
     rng = random.Random(seed)
@@ -491,19 +500,29 @@ def monte_carlo(p_levels, p, n_chains=10000, seed=1, chains_per_year=60, capital
     wr = p["r_mult"] if win_r is None else win_r
     draws_full, fulls, bal = [], 0, []
     per = max(1, n_chains // 200)
+    # a priori centré sur le taux observé tous niveaux confondus (force 5) : un niveau sans donnée
+    # n'est PAS supposé gagner une fois sur deux
+    tw = sum(w for w, m in p_levels.values())
+    tn = sum(m for w, m in p_levels.values())
+    pbar = (tw + 1) / (tn + 2)
+    a0 = 5.0
     for _ in range(200):
-        pk = [rng.betavariate(1 + w, 1 + (m - w)) for w, m in (p_levels.get(k, (0, 0)) for k in range(1, n + 1))]
+        pk = [rng.betavariate(a0 * pbar + w, a0 * (1 - pbar) + (m - w))
+              for w, m in (p_levels.get(k, (0, 0)) for k in range(1, n + 1))]
         draws_full.append(math.prod(pk))
         for _ in range(per):
             acc, risk_k = 0.0, 1.0
             ok = True
             for k in range(n):
+                wr_k, lr_k = (r_levels or {}).get(k + 1, (None, None))
+                wr_k = wr if wr_k is None else wr_k
+                lr_k = loss_r if lr_k is None else lr_k
                 if rng.random() < pk[k]:
-                    g = risk_k * wr
+                    g = risk_k * wr_k
                     acc += g
                     risk_k = g * p["reinvest"]
                 else:
-                    acc += risk_k * loss_r
+                    acc += risk_k * lr_k
                     ok = False
                     break
             fulls += ok
