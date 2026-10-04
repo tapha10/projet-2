@@ -60,3 +60,19 @@ Dernière mise à jour : 04/10/2026 (Phase 0, mise en place).
 - Pas de compositions ni d'absences (aucune source gratuite et autorisée) : M2 ne voit que le repos et l'enjeu.
 - `fixtures.csv` ne couvre pas tous les jours ; résultats publiés avec 1 à 3 jours de retard.
 - M3 ne retient qu'environ 0,3 match par jour : le combiné de 5 sera souvent plus court, voire absent.
+
+## Routines planifiées (rattachées à la session claude.ai de mise en place, heure de Paris)
+
+| Routine | Horaire | Identifiant |
+|---|---|---|
+| R1 collecte et prédictions | tous les jours 10:00 | trig_01MYvdDTZxYFYC38XyAFWt6w |
+| R2 avant matchs | toutes les heures 12:00–22:00 | trig_01TukgBFfWWipuHkhnMMhypc |
+| R3 résultats | 23:55 | trig_01MAeNAtdmTxSV1EFSsuvmUY |
+| R3 résultats | 07:30 | trig_01PVEcLwkHvzRgAR3FrbLxnd |
+| R4 rapport du lendemain | 08:15 | trig_01CRowk7gkx6SPGt82iGzux9 |
+| R5 optimisation | 03:30 | trig_01DvuX9zDv8JMqchNxVwLr1z |
+| R5 approfondie | dimanche 10:00 | trig_01BVaAKv54kjVZSpeZXWLF3H |
+| R6 rapport hebdomadaire | dimanche 18:30 | trig_01MiazxvrtqiBvo2Kok9VQ3X |
+
+Les déclenchements s'exécutent l'un après l'autre dans la même session : c'est un verrou naturel. Le verrou
+`foot_locks` sur Supabase s'ajoute dès le passage au mode Supabase.
