@@ -203,3 +203,40 @@ class TestNonRegression3(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCycle14Days(unittest.TestCase):
+    """Cycle sec de 14 jours (05:45, 14:20, vérifications, dimanche 11:30), lecture seule 7 jours,
+    attente des routines 5 et 6, reprise après coupure, relance sans doublon."""
+
+    @classmethod
+    def setUpClass(cls):
+        from engine import dryrun7
+        hist = synth_events(300, 0.35, seed=4)
+        for e in hist:
+            e["mfe10"] = 0.2
+        cls.st, cls.order = dryrun7.cycle(hist_events=hist)
+
+    def test_no_guardrail_violation(self):
+        self.assertEqual(self.st.violations, [])
+
+    def test_waits_for_routines_5_and_6(self):
+        self.assertIn((3, "05:45", "R7 attend", "en attente de routine6"), self.order)
+        self.assertTrue(any(d.get("action") == "non_exécutée" for d in self.st.d["decisions"]))
+
+    def test_read_only_first_7_days(self):
+        first = min((p["opened_ts"] for p in self.st.positions), default=None)
+        start = min(stats_ts(d["created_at"]) for d in self.st.d["decisions"])
+        self.assertIsNotNone(first)
+        self.assertGreaterEqual(first - start, 7 * DAY - 6 * 3600)
+        self.assertTrue(any(d.get("read_only") for d in self.st.d["decisions"]))
+
+    def test_sunday_and_crash(self):
+        self.assertEqual(sum(1 for o in self.order if o[2] == "R7 dimanche"), 2)
+        self.assertTrue(any("coupure simulée" in o[3] for o in self.order))
+        self.assertLessEqual(sum(1 for c in self.st.d["chains"] if c["state"] == "ouverte"), 3)
+
+
+def stats_ts(x):
+    from engine import stats
+    return stats.parse_ts(x)

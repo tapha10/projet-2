@@ -125,8 +125,8 @@ def target_calibration(events):
     """Hausse maximale médiane sur 10 jours depuis l'entrée, par mode, sur TOUS les signaux
     (y compris ceux qui n'ont rien donné) ; comparée aux cas de référence (pumps déjà connus)."""
     out = {}
-    for key in sorted({e["mode"] for e in events}) + ["tous"]:
-        xs = sorted(e["mfe10"] for e in events if e.get("mfe10") is not None and (key == "tous" or e["mode"] == key))
+    for key in sorted({e.get("mode", "inconnu") for e in events}) + ["tous"]:
+        xs = sorted(e["mfe10"] for e in events if e.get("mfe10") is not None and (key == "tous" or e.get("mode", "inconnu") == key))
         if xs:
             out[key] = dict(n=len(xs), median=xs[len(xs) // 2], p25=xs[len(xs) // 4], p75=xs[3 * len(xs) // 4],
                             suggested_target=max(t for t in (0.15, 0.30, 0.45) if t <= max(0.15, xs[len(xs) // 2]))
