@@ -1,5 +1,14 @@
 # Guide d'exécution des routines (pour les sessions planifiées)
 
+> **Mode économe (actif depuis le 04/10/2026)** : pour limiter la consommation de l'abonnement, il n'y a plus que
+> 2 routines. Chacune lance une seule commande, qui enchaîne les étapes ci-dessous :
+> - tous les jours à 10:00 : `bash foot/routine.sh quotidien` (R3 résultats -> R4 rapport -> R1 prédictions et combiné) ;
+> - le dimanche à 18:30 : `bash foot/routine.sh hebdo` (R5 approfondie avec réentraînement -> R6 rapport hebdomadaire).
+>
+> R2 (compositions toutes les heures) est suspendue : aucune source de compositions autorisée n'existe pour l'instant.
+> La R5 quotidienne est suspendue : trop peu de données nouvelles chaque jour. On les rétablit si une clé API est ajoutée.
+> Le détail ci-dessous reste valable pour une exécution manuelle ou pour le mode Supabase.
+
 _Simulation papier, pas un conseil de pari ; parier de l'argent réel comporte un risque de perte._
 
 Chaque routine est une session Claude Code planifiée (heure de Paris), qui part d'un conteneur neuf.
