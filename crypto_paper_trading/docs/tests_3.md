@@ -29,3 +29,27 @@ Rien n'est conservé : après les tests, `positions`, `chains`, `chain_steps` so
 
 Note : le premier essai du cas 8 a été bloqué par le plafond de risque (risque 10,1 > 10) avant
 d'atteindre la règle de liquidité ; le cas a été refait avec un risque conforme (stop 5 %, risque 7,5).
+
+## 2. Tests du moteur (`tests/test_chains.py`, 24 tests, tous verts)
+
+| Groupe | Ce qui est vérifié | Résultat |
+|---|---|---|
+| Exemple chiffré | risques 100/300/900/2 700/8 100, gains 300/900/2 700/8 100/24 300, total 36 300 ; bilans d'échec -100 / 0 / +300 / +1 200 / +3 900 ; positions 1 000 (stop 10 %) et 6 000 (stop 5 %) | OK |
+| Unitaires | risque k+1 = gain k ; position = risque / stop ; stop = objectif / 3 ; stop > 15 % refusé ; levier dépassé -> risque réduit (étape 5 : 81 000 -> 66 000, stop inchangé) ; liquidation ≥ 2x le stop ; liquidité 0,1 % ; arrêt à la première perte ; part réinvestie ; seuils par niveau ; « sécuriser » ; pas deux fois le même pair ; événements indépendants (5 victoires sur une même hausse = 1) | OK |
+| Synthétique (a) | p = 70 % -> P(5) ≈ 16,8 % (simulation et Monte Carlo à ±2-3 points) | OK |
+| Synthétique (b) | un critère qui relève vraiment P(victoire) (30 % -> 75 % aux niveaux 2-5) est retenu et fait monter le seuil du niveau 4 (5 -> 6) ; il faut 8 000 événements pour que la validation ait la puissance de conclure | OK |
+| Synthétique (c) | critère aléatoire retenu **2 fois sur 200** (1 %), sous la limite fixée de 2/200 | OK |
+| Synthétique (d) | sans effet de série, le test « main chaude » ne conclut pas (p > 0,05) | OK |
+| Non-régression | routines 1 à 6 et `baseline_before_3.json` identiques | OK |
+| Cycle 14 jours | 05:45 / 14:20 / vérifications / dimanche 11:30 ; lecture seule 7 jours (aucune position avant J+7) ; attente puis « non exécutée » quand la routine 6 n'a pas fini ; coupure simulée puis reprise à partir de l'état ; relance immédiate sans doublon ; 0 violation des garde-fous recopiés | OK |
+
+Suite complète du projet : **123 tests verts** (dont les 99 précédents, inchangés).
+
+Note sur (b) : un premier essai à 1 500 événements a échoué faute de puissance (~15 étapes de niveau 4
+dans la période de validation) ; le critère de décision a aussi été changé de « espérance brute
+par chaîne » (dominée par quelques chaînes complètes à ~360 R, trop bruitée) à « espérance modélisée »
+à partir des taux de victoire lissés par niveau. Les règles de validation n'ont pas été assouplies.
+
+## 3. Migrations rejouées deux fois
+
+Voir section 4 (vérification en base après la seconde exécution).

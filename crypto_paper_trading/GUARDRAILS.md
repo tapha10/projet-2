@@ -119,9 +119,33 @@ sections 1 à 8, toute position du portefeuille T respecte, et la base l'impose 
 Les bras A, B et C gardent leurs limites d'origine (section 3). La routine 6 n'ouvre jamais de
 position et ne peut pas modifier ces limites.
 
+## 10. Prompt 3 — routine 7 « chaînes de victoires » (portefeuille « K », ajouté le 04/10/2026 à la demande du propriétaire)
+
+Papier uniquement, aucun secret dans le dépôt. Les chaînes vivent dans un portefeuille virtuel
+séparé « K » (1 000 USDT). Plafonds imposés par la base (fonction `enforce_chain_position`,
+triggers `chains_guardrails` et `positions_chain_close`) et par le code (`engine/chains.py`) :
+
+| Règle | Limite |
+|---|---|
+| Risque de l'étape 1 | **1 %** du capital virtuel K |
+| Risque des étapes suivantes | jamais plus que le **gain de l'étape précédente** (perte maximale d'une chaîne = 1 % du capital) |
+| Chaînes ouvertes | **3** au plus, **1 position** par chaîne, un même pair jamais ouvert deux fois |
+| Levier des chaînes | **3x** par défaut ; variantes 5x et 7x **en ombre seulement** tant qu'elles ne sont pas validées |
+| Stop | **≤ 15 %**, objectif = R x stop ; stop jamais déplacé dans le mauvais sens ; aucune moyenne à la baisse |
+| Liquidation estimée | au moins **2 fois** plus loin que le stop (glissement compris) |
+| Taille | **exception explicite** à « position ≤ 25 % du capital » (section 9) : la valeur nominale d'une position de chaîne peut dépasser 25 % du capital, mais jamais le levier maximum ni **0,1 % du volume 24 h** du pair |
+| Suspension | routine 7 suspendue (refus par la base) si le **drawdown global** (tous portefeuilles, latent compris) atteint **15 %** |
+| Démarrage | **7 jours de lecture seule** après l'activation (`config.chain_readonly_until`), puis chaînes en papier |
+
+Quand la taille voulue dépasse un plafond, c'est le **risque** de l'étape qui est réduit, jamais le
+stop qui est élargi. La routine n'ouvre jamais de position hors du papier et ne contourne aucun de
+ces plafonds ; l'auto-optimisation (seuils de score par niveau) ne peut modifier ni ce fichier ni
+ces limites. Les bras A, B, C et le portefeuille T gardent leurs règles (sections 3 et 9).
+
 ## Relectures avec le propriétaire
 
 | Date | Décisions |
 |---|---|
 | 03/10/2026 | Addendum 2ter (section 9). |
 | 03/10/2026 | Démo maintenue ; seuil de la section 1 bis (50 trades, 12 semaines, IC 90 % > 0, drawdown < 15 %, aucun incident) ; limites de la section 3 inchangées ; drawdown sur réalisé + latent (section 4) ; section 7 mise à jour après l'audit des bougies ; section 8 inchangée. |
+| 04/10/2026 | Prompt 3 : section 10 (chaînes de victoires, portefeuille K), règles fournies par le propriétaire. |

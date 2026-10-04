@@ -1218,6 +1218,12 @@ def cmd_report(a):
                 "avec vous et un test à très petite taille ; ce système reste en démo."))
     if tdata is not None:
         L.append("\n" + cli2ter.report_section(tdata, r6))
+    if getattr(a, "chains_data", None):          # prompt 3 : routine 7, chaînes de victoires
+        from . import cli7
+        try:
+            L.append("\n" + "\n".join(cli7.report_section(cli7.unwrap(load_json_loose(a.chains_data)))))
+        except Exception as e:
+            L.append(f"\n## Chaînes de victoires\n\nSection indisponible : {str(e)[:160]}")
     md = "\n".join(L) + "\n"
     write(a.out, md)
     metrics["generated_at"] = iso(now)
@@ -1240,7 +1246,7 @@ def main(argv=None):
     s.add_argument("--limit", type=int, default=40)
     s = sub.add_parser("adapt"); s.add_argument("--history", required=True); s.add_argument("--out", required=True)
     s = sub.add_parser("report"); s.add_argument("--history", required=True); s.add_argument("--out", required=True)
-    s.add_argument("--calendar"); s.add_argument("--sql"); s.add_argument("--intro"); s.add_argument("--tiers-data")
+    s.add_argument("--calendar"); s.add_argument("--sql"); s.add_argument("--intro"); s.add_argument("--tiers-data"); s.add_argument("--chains-data")
     a = ap.parse_args(argv)
     {"scan": cmd_scan, "decide": cmd_decide, "check": cmd_check, "outcomes": cmd_outcomes,
      "adapt": cmd_adapt, "report": cmd_report}[a.cmd](a)
