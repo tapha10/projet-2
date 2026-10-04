@@ -124,12 +124,17 @@ def positions_section(open_positions, signals, prices, now):
     return L
 
 
-def waits_section(signals, now, rules):
-    waits = [s for s in signals if s.get("decision") == "wait" and s.get("reevaluate_after")]
+def pending_waits(signals):
+    """Signaux encore en attente : le plus récent signal de la crypto doit être un « wait » (une réévaluation
+    entrée ou abandonnée met fin à l'attente)."""
     latest = {}
-    for s in sorted(waits, key=lambda s: s["id"]):
+    for s in sorted(signals, key=lambda s: s["id"]):
         latest[s["pair"]] = s
-    pending = [s for s in latest.values() if stats.parse_ts(s["reevaluate_after"]) > now - 2 * DAY]
+    return [s for s in latest.values() if s.get("decision") == "wait" and s.get("reevaluate_after")]
+
+
+def waits_section(signals, now, rules):
+    pending = [s for s in pending_waits(signals) if stats.parse_ts(s["reevaluate_after"]) > now - 2 * DAY]
     L = ["## En attente (réévaluation prévue)\n"]
     if not pending:
         return L + ["Aucun signal en attente.\n"]
@@ -159,8 +164,8 @@ def deadlines_section(open_positions, signals, cfg_get, now):
     for (pair, _), (ts, arms) in grp.items():
         ev.append((ts, f"sortie au plus tard de {pair.replace('USDT', '')} ({', '.join(sorted(arms))}) "
                        f"si ni stop ni objectif n'est touché"))
-    for s in signals:
-        if s.get("decision") == "wait" and s.get("reevaluate_after") and stats.parse_ts(s["reevaluate_after"]) > now:
+    for s in pending_waits(signals):
+        if stats.parse_ts(s["reevaluate_after"]) > now:
             ev.append((stats.parse_ts(s["reevaluate_after"]), f"réévaluation de {s['pair'].replace('USDT', '')}"))
     for key, label in (("r6_readonly_until", "fin de la lecture seule des paliers (routine 6)"),
                        ("chain_readonly_until", "fin de la lecture seule des chaînes (routine 7)")):

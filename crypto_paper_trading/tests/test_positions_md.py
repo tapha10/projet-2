@@ -32,6 +32,11 @@ class PositionsMd(unittest.TestCase):
         self.assertIn("réévaluation de Y", d)
         self.assertIn("sortie au plus tard de X (A, B)", d)
 
+    def test_wait_ends_when_reevaluated(self):
+        sig = SIG + [dict(id=11, pair="YUSDT", decision="enter", decision_reason="réévaluation", parent_signal_id=10,
+                          detected_at="2026-10-05T10:00:00+00:00")]
+        self.assertIn("Aucun signal en attente", "\n".join(positions_md.waits_section(sig, NOW, {})))
+
     def test_email_keeps_key_sections(self):
         md = "# T\n\n## En bref\n\nx\n\n## 2. Comparaison\n\ny\n\n## Mes positions ouvertes (détail)\n\nz\n"
         e = cli.email_md(md)
