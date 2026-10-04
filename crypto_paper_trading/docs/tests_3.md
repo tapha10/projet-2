@@ -53,3 +53,15 @@ par chaîne » (dominée par quelques chaînes complètes à ~360 R, trop bruit�
 ## 3. Migrations rejouées deux fois
 
 Voir section 4 (vérification en base après la seconde exécution).
+
+## 4. Intégration en base (04/10/2026)
+
+- Migration 009 appliquée puis **rejouée** (tables, colonnes, seuils, version K, configuration, journal) :
+  compteurs identiques après la seconde exécution (16 variantes, 78 seuils, 1 version K,
+  1 ligne de journal, date de fin de lecture seule inchangée : 11/10/2026 12:09, heure de Paris).
+- Le connecteur Supabase expire au-delà d'environ 60 s : la migration a été appliquée en plusieurs
+  morceaux (aucun n'a été appliqué à moitié : chaque morceau expiré a été vérifié puis renvoyé).
+- Première optimisation (lecture seule) enregistrée : 32 lignes `chain_sim_runs` (rejeu historique
+  et Monte Carlo pour les 16 variantes), statuts « inconclusif », 2 décisions, 1 ligne de journal.
+- Activation : tâches planifiées 05:45, 14:20 et dimanche 11:30 (heure de Paris). Lecture seule
+  jusqu'au 11/10/2026 ; chaînes papier ensuite.

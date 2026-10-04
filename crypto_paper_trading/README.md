@@ -102,3 +102,14 @@ Gate sont exclus. Les annonces, unlocks et transferts viennent de la recherche w
 - La qualité des signaux « annonces » dépend de la recherche web de la routine.
 - Les routines sont des agents : une routine peut échouer (source bloquée, quota) ;
   les triggers de la base garantissent toutefois que les plafonds ne sont jamais dépassés.
+
+### Routine 7 — chaînes de victoires (prompt 3, papier uniquement)
+
+| Heure (Paris) | Mode | Rôle |
+|---|---|---|
+| 05:45 chaque jour | `daily` | ombre + Monte Carlo + `chain_stats` (après les routines 5 et 6) |
+| 14:20 chaque jour | `decide` | entrer / attendre / sécuriser pour chaque chaîne (après la routine 1) |
+| dimanche 11:30 | `weekly` | rejeu historique, comparaison aux références, seuils, statuts |
+
+Consigne : `routines/07_chaines.md` ; logique et mémoire : `docs/chaines.md` ; garde-fous :
+`GUARDRAILS.md` section 10 ; tests : `docs/tests_3.md`.
