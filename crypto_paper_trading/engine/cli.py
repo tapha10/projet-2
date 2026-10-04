@@ -722,9 +722,12 @@ def cmd_check(a):
     sql.append(f"select paper_set_marks({q(marks)});")
     if a.daily:
         sql.append(f"select paper_record_daily({q({k: round(v, 4) for k, v in unreal.items()})});")
+    if getattr(a, "late_date", None):   # rattrapage d'une clôture manquée (jamais écrasée si elle existe)
+        late = datetime.strptime(a.late_date, "%Y-%m-%d").date().isoformat()
+        sql.append(f"select paper_record_daily_late({q({k: round(v, 4) for k, v in unreal.items()})}, '{late}'::date);")
     write(a.out, "begin;\n" + "\n".join(sql) + "\ncommit;\n" if sql else "select 'aucune position ouverte';\n")
     print(f"{len(st.get('open_positions', []))} positions vérifiées\n" + "\n".join(lines)
-          + (f"\nPnL latent estimé par bras : {unreal}" if a.daily else ""))
+          + (f"\nPnL latent estimé par bras : {unreal}" if a.daily or getattr(a, "late_date", None) else ""))
 
 
 # =============================================================== OUTCOMES
@@ -1312,6 +1315,7 @@ def main(argv=None):
     s.add_argument("--candidates", required=True); s.add_argument("--out", required=True)
     s = sub.add_parser("check"); s.add_argument("--state", required=True); s.add_argument("--out", required=True)
     s.add_argument("--daily", action="store_true"); s.add_argument("--tiers", action="store_true")
+    s.add_argument("--late-date", help="AAAA-MM-JJ : rattrapage de la clôture d'un jour passé")
     s = sub.add_parser("outcomes"); s.add_argument("--history", required=True); s.add_argument("--out", required=True)
     s.add_argument("--limit", type=int, default=40)
     s = sub.add_parser("adapt"); s.add_argument("--history", required=True); s.add_argument("--out", required=True)

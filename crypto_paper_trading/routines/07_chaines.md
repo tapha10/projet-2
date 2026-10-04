@@ -1,5 +1,9 @@
 # Routine 7 — Chaînes de victoires (PAPIER UNIQUEMENT)
 
+> **Depuis le 04/10/2026**, cette routine n'a plus de déclencheur propre : elle est appelée par les
+> passages regroupés `10_matin.md` (05:30), `11_verif_scan.md` (08:00, 20:00), `12_apres_midi.md` (14:00)
+> et `13_cloture.md` (23:30). Les horaires du titre sont historiques. Commence par `select paper_memory();`.
+
 Passages (heure de Paris) :
 - **05:45** chaque jour (après la routine 5 de 04:00 et la routine 6 de 05:30) : mode `daily` ;
 - **14:20** chaque jour (après la routine 1 de 14:00) : mode `decide` ;

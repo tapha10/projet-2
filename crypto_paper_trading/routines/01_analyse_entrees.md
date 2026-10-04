@@ -1,5 +1,9 @@
 # Routine 1 — Analyse et entrées (tous les jours à 14:00, Paris)
 
+> **Depuis le 04/10/2026**, cette routine n'a plus de déclencheur propre : elle est appelée par les
+> passages regroupés `10_matin.md` (05:30), `11_verif_scan.md` (08:00, 20:00), `12_apres_midi.md` (14:00)
+> et `13_cloture.md` (23:30). Les horaires du titre sont historiques. Commence par `select paper_memory();`.
+
 ## Contexte (tu ne te souviens de rien : tout est dans Supabase et dans ce dépôt)
 
 - Système de **paper trading crypto 100 % démo**. Lis d'abord `crypto_paper_trading/GUARDRAILS.md`

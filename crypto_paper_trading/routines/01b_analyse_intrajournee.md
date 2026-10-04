@@ -1,5 +1,9 @@
 # Routine 1b — Analyse intrajournalière (02:00, 06:00, 10:00, 18:00, 22:00, Paris)
 
+> **Depuis le 04/10/2026**, cette routine n'a plus de déclencheur propre : elle est appelée par les
+> passages regroupés `10_matin.md` (05:30), `11_verif_scan.md` (08:00, 20:00), `12_apres_midi.md` (14:00)
+> et `13_cloture.md` (23:30). Les horaires du titre sont historiques. Commence par `select paper_memory();`.
+
 > Même chaîne que la routine 1 (14:00), en version légère, pour voir plus tôt les annonces
 > d'exchanges et les accumulations « avant la hausse ». Les plafonds (3 entrées par jour et
 > par bras, 8 positions) sont communs à tous les passages de la journée.

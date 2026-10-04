@@ -1,5 +1,9 @@
 # Routine 2 — Vérification stop / objectif (08:00, 14:30, 20:00 et 23:30, Paris)
 
+> **Depuis le 04/10/2026**, cette routine n'a plus de déclencheur propre : elle est appelée par les
+> passages regroupés `10_matin.md` (05:30), `11_verif_scan.md` (08:00, 20:00), `12_apres_midi.md` (14:00)
+> et `13_cloture.md` (23:30). Les horaires du titre sont historiques. Commence par `select paper_memory();`.
+
 ## Contexte (tu ne te souviens de rien : tout est dans Supabase et dans ce dépôt)
 
 - Système de **paper trading crypto 100 % démo**. Lis d'abord `crypto_paper_trading/GUARDRAILS.md`
@@ -28,6 +32,8 @@
 1. Exécute `select paper_state();` et écris le résultat dans `$W/state.json`.
 2. Si l'heure de Paris est entre 23:00 et 23:59 (vérifie avec `TZ=Europe/Paris date`),
    ajoute `--daily` à la commande suivante (ligne du jour dans `daily_results`).
+   Rattrapage d'une clôture manquée (passage du matin) : `--late-date AAAA-MM-JJ` à la place de
+   `--daily` (écrit la ligne de ce jour passé, jamais par-dessus une ligne existante).
    ```bash
    python3 -m engine.cli check --tiers --state $W/state.json --out $W/check.sql [--daily]
    ```

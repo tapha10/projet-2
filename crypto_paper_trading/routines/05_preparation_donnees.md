@@ -1,5 +1,9 @@
 # Routine 5 — Préparation des données des paliers (04:00 tous les jours ; dimanche 10:00 complète, Paris)
 
+> **Depuis le 04/10/2026**, cette routine n'a plus de déclencheur propre : elle est appelée par les
+> passages regroupés `10_matin.md` (05:30), `11_verif_scan.md` (08:00, 20:00), `12_apres_midi.md` (14:00)
+> et `13_cloture.md` (23:30). Les horaires du titre sont historiques. Commence par `select paper_memory();`.
+
 > Substitut minimal créé par l'addendum 2ter : la routine 5 de l'addendum 2bis n'existe
 > pas dans ce système (voir `docs/audit_2ter.md`). Elle ne fait que préparer les
 > données dont la routine 6 a besoin. Elle n'ouvre ni ne ferme aucune position.

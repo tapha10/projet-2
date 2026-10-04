@@ -280,7 +280,8 @@ language sql stable set search_path = '' as $$
     'signals', coalesce((select jsonb_agg(jsonb_build_object('id', s.id, 'pair', s.pair, 'detected_at', s.detected_at,
                            'decision', s.decision, 'score', s.score, 'price_at_detection', s.price_at_detection,
                            'atr14', s.metrics->'atr14', 'quote_vol_24h', s.metrics->'quote_vol_24h',
-                           'signal_types', s.signal_types, 'criteria', f.criteria, 'is_reference', s.is_reference)
+                           'signal_types', s.signal_types, 'criteria', f.criteria, 'is_reference', s.is_reference,
+                           'alerts', s.alerts, 'decision_reason', s.decision_reason)
                            order by s.id)
                          from public.signals s left join public.signal_features f on f.signal_id = s.id
                          where s.detected_at > now() - interval '60 days'), '[]'::jsonb),

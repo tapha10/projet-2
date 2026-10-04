@@ -1,5 +1,9 @@
 # Routine 6 — Paliers et critères (05:30 tous les jours ; dimanche 11:00 analyse complète, Paris)
 
+> **Depuis le 04/10/2026**, cette routine n'a plus de déclencheur propre : elle est appelée par les
+> passages regroupés `10_matin.md` (05:30), `11_verif_scan.md` (08:00, 20:00), `12_apres_midi.md` (14:00)
+> et `13_cloture.md` (23:30). Les horaires du titre sont historiques. Commence par `select paper_memory();`.
+
 > Addendum 2ter. Elle n'ouvre **jamais** de position : elle analyse, débloque ou bloque des
 > paliers, puis la routine 1 applique au cycle suivant. Les 7 premiers jours après activation
 > (`config.r6_readonly_until`), elle tourne en **lecture seule** : constats sans décision.
