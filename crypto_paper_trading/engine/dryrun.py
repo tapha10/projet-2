@@ -13,6 +13,7 @@ import argparse
 import json
 import math
 import random
+import zlib
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -34,7 +35,7 @@ class FakeMarket:
 
     def _path(self, pair):
         if pair not in self.paths:
-            r = random.Random(hash(pair) % 10_000 + 17)
+            r = random.Random(zlib.crc32(pair.encode()) % 10_000 + 17)  # déterministe d'un processus à l'autre
             p, rows = 1.0 + r.random(), []
             drift, vol = r.uniform(-0.0005, 0.0012), r.uniform(0.008, 0.03)
             t = self.start
