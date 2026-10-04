@@ -70,7 +70,7 @@ bougie 15 min, la bougie est rejouée minute par minute ; si l'ordre reste incon
 plafonnée par le levier maximum. Le levier est choisi pour que la liquidation
 estimée (marge de maintenance 1 % + 2 % de marge) reste sous le stop.
 
-## Suivi (4 fois par jour)
+## Suivi (4 fois par jour : 08:00, 14:00, 20:00, 23:30)
 
 Bougies de **15 minutes** fermées, chacune traitée **une seule fois** : `sim_through_at`
 mémorise la fin de la dernière bougie simulée et la vérification suivante repart de là.
@@ -85,7 +85,7 @@ Frais : 0,055 % par exécution et par côté (preneur Bybit, aussi sur l'objecti
 Funding : taux **réellement réglés** (historique Gate) entre l'entrée et la sortie ;
 estimation 0,01 % par 8 h seulement si l'historique est indisponible.
 
-## Auto-amélioration (12:30)
+## Auto-amélioration (passage du matin, 05:30)
 
 - Statistiques quotidiennes par bras et par type de signal.
 - Aucun changement avant **30 trades fermés** dans un bras.
@@ -96,6 +96,11 @@ estimation 0,01 % par 8 h seulement si l'historique est indisponible.
   20 derniers trades (rejoués sur les mêmes données).
 - Résultats à 10 jours de **tous** les signaux (entrés ou non) : occasions
   manquées, avance du signal, R contrefactuel par bras.
+- **Anti-cercle vicieux (04/10/2026)** : moins de 30 trades fermés → l'échantillon d'adaptation
+  est complété par des **trades contrefactuels** (signaux non entrés de plus de 10 jours, un par
+  événement indépendant) ; après **7 jours sans entrée** dans un bras, **une** entrée d'exploration
+  à demi-risque par passage sur le meilleur signal refusé seulement pour son score (≥ seuil − 1,
+  sans alerte). Même logique pour la première étape des chaînes (routine 7). Voir GUARDRAILS section 8.
 
 ## Addendum 2ter — échelle d'ambition (paliers P1 à P4)
 

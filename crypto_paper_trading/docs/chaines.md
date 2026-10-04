@@ -59,3 +59,15 @@ seuils_plats_3 ; seuils_stricts ; levier_5x_ombre, levier_7x_ombre (ombre seulem
 - Test « main chaude » : inconclusif (une seule étape après 2 victoires).
 - Verdict : **inconclusif**, aucune variante n'a d'avantage mesuré ; il manque des chaînes indépendantes
   (au moins 30 au niveau testé, 100 pour conclure « impossible avec ces critères »).
+
+## 6. Exploration (anti-cercle vicieux, 04/10/2026)
+
+Si aucune étape n'a été décidée depuis **7 jours** (comptés depuis la fin de la lecture seule), le
+mode `decide` peut ouvrir **une** étape 1 d'exploration par passage : signal refusé seulement pour
+son score (`decision_reason` commençant par « score »), sans alerte, au seuil du niveau 1 **moins 1**,
+à **demi-risque** (0,5 % du capital K). Les autres règles (levier ≤ 3x, liquidation ≥ 2 x stop,
+0,1 % du volume 24 h, 3 chaînes au plus, suspension à 15 % de drawdown global) restent identiques.
+`paper_chain_data()` fournit pour cela `alerts` et `decision_reason` de chaque signal.
+
+Passages depuis le 04/10/2026 : mode `daily` dans le passage du matin (05:30, après R5 et R6),
+`weekly` le dimanche dans ce même passage, `decide` dans le passage de 14:00 (après R1).

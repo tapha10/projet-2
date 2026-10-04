@@ -101,6 +101,21 @@ inconnu, le stop compte d'abord. Détail : `docs/audit_bougies.md`. **Chaque rap
 - Retour à la version précédente si l'espérance baisse sur 20 trades.
 - L'auto-amélioration ne peut modifier ni ce fichier, ni les limites des sections 1 à 4.
 
+**Anti-cercle vicieux (ajouté le 04/10/2026 à la demande du propriétaire).** Sans trade, rien ne
+s'apprend ; sans apprentissage, aucun trade. Deux corrections, sans toucher aux limites 1 à 4 :
+
+- **Trades contrefactuels pour l'adaptation** : tant qu'un bras a moins de 30 trades fermés, son
+  échantillon est complété par les signaux **non entrés** dont les 10 jours sont écoulés (entrée au
+  prix de détection, un seul par événement indépendant : même pair à moins de 10 jours). Toutes les
+  autres conditions (30 au total, un seul changement, ±20 %, walk-forward 70/30, IC bootstrap > 0,
+  retour arrière) restent identiques ; le rapport précise que l'échantillon contient des contrefactuels.
+- **Exploration** : si un bras n'a pris **aucune entrée depuis 7 jours** (`config.exploration_after_days`,
+  à défaut depuis `demo_started_at`), le moteur peut prendre **une seule** entrée d'exploration par
+  passage, à **demi-risque** (0,5 %), sur un signal refusé **uniquement** pour son score (score ≥ seuil − 1),
+  sans aucune alerte. Mêmes plafonds, mêmes garde-fous de la base. Pour la routine 7 : après 7 jours
+  sans étape (comptés depuis la fin de la lecture seule), une étape 1 à demi-risque au seuil du niveau 1
+  moins 1, une par passage. Chaque entrée d'exploration est marquée comme telle dans sa justification.
+
 ## 9. Addendum 2ter — portefeuille des paliers « T » (règles plus strictes, ajoutées le 03/10/2026 avec le propriétaire)
 
 Les paliers P1-P4 vivent dans un portefeuille virtuel séparé « T » (1 000 USDT). En plus des
@@ -149,3 +164,4 @@ ces limites. Les bras A, B, C et le portefeuille T gardent leurs règles (sectio
 | 03/10/2026 | Addendum 2ter (section 9). |
 | 03/10/2026 | Démo maintenue ; seuil de la section 1 bis (50 trades, 12 semaines, IC 90 % > 0, drawdown < 15 %, aucun incident) ; limites de la section 3 inchangées ; drawdown sur réalisé + latent (section 4) ; section 7 mise à jour après l'audit des bougies ; section 8 inchangée. |
 | 04/10/2026 | Prompt 3 : section 10 (chaînes de victoires, portefeuille K), règles fournies par le propriétaire. |
+| 04/10/2026 | Section 8 : anti-cercle vicieux (trades contrefactuels pour l'adaptation, exploration à demi-risque après 7 jours sans entrée), à la demande du propriétaire. Limites des sections 1 à 4 inchangées. |

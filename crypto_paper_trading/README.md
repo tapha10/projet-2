@@ -35,15 +35,20 @@ Supabase (le prompt interdit de s'appuyer sur la mémoire de la conversation).
 Pour des sessions totalement isolées, recréer les 5 routines depuis l'interface
 claude.ai (Routines) en cochant les connecteurs Supabase et Gmail, avec le même prompt.
 
-| Déclencheur | Cron (Europe/Paris) |
-|---|---|
-| 3. Adaptation | `27 12 * * *` |
-| 1. Analyse et entrées | `0 14 * * *` |
-| 1b. Analyse intrajournalière (détection précoce) | `0 2,6,10,18,22 * * *` |
-| 2. Vérification | `0 8,20 * * *` et `30 14,23 * * *` |
-| 4. Rapport | `0 18 * * 0` |
-| 5. Préparation des données (2ter) | `0 4 * * *` et `0 10 * * 0` |
-| 6. Paliers et critères (2ter) | `30 5 * * *` et `0 11 * * 0` |
+Depuis le 04/10/2026, les routines sont **regroupées en 5 passages par jour** (au lieu de 16)
+pour économiser l'abonnement sans rien retirer : chaque passage enchaîne les routines dans l'ordre
+et commence par `select paper_memory();` (mémoire du projet et rattrapage de ce qui a été manqué,
+voir `docs/memoire.md`).
+
+| Déclencheur | Cron (Europe/Paris) | Contenu |
+|---|---|---|
+| Passage du matin (`routines/10_matin.md`) | `30 5 * * *` | rattrapage clôture d'hier, R5, R6, R7 daily (+ weekly le dimanche), R3, rapport en retard |
+| Vérification + analyse légère (`routines/11_verif_scan.md`) | `0 8,20 * * *` | R2, R1b (+ rattrapage du matin) |
+| Après-midi (`routines/12_apres_midi.md`) | `0 14 * * *` | R1, R7 decide, R2 |
+| Clôture (`routines/13_cloture.md`) | `30 23 * * *` | R2 `--daily` |
+| 4. Rapport (`routines/04_rapport_hebdo.md`) | `0 18 * * 0` | rapport hebdomadaire par Gmail |
+
+Les anciens déclencheurs séparés sont **désactivés** (conservés, réactivables).
 
 Addendum 2ter (paliers P1-P4, tranches, découverte de critères) : `docs/audit_2ter.md`,
 `docs/tests_2ter.md`, migration `sql/004_tiers_2ter.sql`, modules `engine/tiers.py`,
