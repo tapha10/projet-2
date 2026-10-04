@@ -654,8 +654,8 @@ def cmd_check(a):
             if last is not None:
                 qty = ps.size_usd / ps.entry
                 u = qty * (last - ps.entry) - fee * ps.size_usd
-                unreal[p["arm"]] += u
-                marks[p["arm"]][str(p["id"])] = round(u, 4)
+                unreal[p["arm"]] = unreal.get(p["arm"], 0.0) + u        # K (chaînes) inclus
+                marks.setdefault(p["arm"], {})[str(p["id"])] = round(u, 4)
             sql.append(
                 f"update positions set stop_price={q(ps.stop)}, highest_price={q(ps.highest)}, "
                 f"mfe_pct={q(round(ps.highest / ps.entry - 1, 6))}, "
