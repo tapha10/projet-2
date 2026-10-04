@@ -69,3 +69,5 @@ avec une seule commande chacune.
 - Le dimanche à 18:30 : `bash foot/routine.sh hebdo` (R5 approfondie avec réentraînement -> R6 rapport hebdomadaire).
 - Suspendues : R2 (pas de source de compositions) et la R5 quotidienne (trop peu de données nouvelles chaque jour).
   On les rétablit si une clé API est ajoutée.
+- Session dédiée : « Foot — routines (simulation papier) » (session_01FznT1Ku5LLwXGaKGHpLDGX, modèle Haiku 4.5).
+  Routines : trig_018uKA4Fsf5nCBcRAaVj7U8f (tous les jours 10:00), trig_0163GZybHQHYFXNmzxJN9zXD (dimanche 18:30).
