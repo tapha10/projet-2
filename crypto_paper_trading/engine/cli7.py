@@ -156,15 +156,21 @@ def decide(data, price_fn, now, slip=0.001):
     slots = [dict(c) for c in live]
     for i in range(max(0, p["max_open_chains"] - len(live))):
         slots.append(dict(id=None, new_index=i, level=0, gate_level=0, house=0.0))
+    explore = chain_exploration(data, now)
     cands = []
     for s in data.get("signals", []):
-        if s.get("decision") != "enter" or s.get("is_reference") or s["id"] in used:
+        if s.get("is_reference") or s["id"] in used or now - ts_of(s["detected_at"]) > DAY:
             continue
-        if now - ts_of(s["detected_at"]) > DAY:
+        ok = s.get("decision") == "enter"
+        # exploration : signal refusé seulement pour son score (aucune alerte), seuil du niveau 1 moins 1
+        exp = (explore and s.get("decision") == "skip" and not s.get("alerts")
+               and str(s.get("decision_reason") or "").startswith("score"))
+        if not (ok or exp):
             continue
         crit = {k: v for k, v in (s.get("criteria") or {}).items() if v is not None}
-        cands.append(dict(s, qscore=C.quality_score(s.get("score"), crit, weights)))
-    cands.sort(key=lambda s: -s["qscore"])
+        cands.append(dict(s, qscore=C.quality_score(s.get("score"), crit, weights), explore=not ok))
+    cands.sort(key=lambda s: (s["explore"], -s["qscore"]))
+    explored = False
     for c in slots:
         if c.get("id") in busy_chains:
             continue
@@ -183,6 +189,12 @@ def decide(data, price_fn, now, slip=0.001):
             if s["pair"] in busy_pairs:
                 why_not.append(f"{s['pair']} déjà ouvert")
                 continue
+            if s["explore"]:
+                if k > 1 or explored or s["qscore"] < gate - 1:
+                    continue
+                pick = s
+                explored = True
+                break
             if s["qscore"] < gate:
                 why_not.append(f"{s['pair']} score {s['qscore']:.1f} < seuil {gate:g}")
                 continue
@@ -207,6 +219,8 @@ def decide(data, price_fn, now, slip=0.001):
                              logic=f"{pick['pair']} : déjà +{entry / det_px - 1:.1%} depuis la détection (> 5 %), entrée trop tardive"))
             continue
         risk = (eq * p["risk_pct"]) if k == 1 or float(c.get("house") or 0) <= 0 else float(c["house"])
+        if pick.get("explore"):
+            risk *= 0.5                                   # exploration : demi-risque
         plan = C.step_size(risk, stop_pct, p["r_mult"], eq, min(p["max_leverage"], C.HARD["max_leverage_live"]),
                            _f(pick.get("quote_vol_24h")), slip)
         if plan.get("refused"):
@@ -219,7 +233,9 @@ def decide(data, price_fn, now, slip=0.001):
                     stop=entry * (1 - stop_pct), target=entry * (1 + stop_pct * p["r_mult"]), stop_pct=stop_pct,
                     r_mult=p["r_mult"], risk=plan["risk"], size=plan["size"], leverage=lev,
                     vol_24h=_f(pick.get("quote_vol_24h")), reduced=plan["reason"], read_only=ro,
-                    logic=(f"niveau {k} : {pick['pair']} score {pick['qscore']:.1f} >= seuil {gate:g} ; risque "
+                    logic=(("EXPLORATION (aucune étape depuis 7 j, demi-risque) — " if pick.get("explore") else "")
+                           + f"niveau {k} : {pick['pair']} score {pick['qscore']:.1f} "
+                           + (f">= seuil {gate:g} - 1" if pick.get("explore") else f">= seuil {gate:g}") + " ; risque "
                            f"{plan['risk']:.2f} ({'1 % du capital' if k == 1 else 'gain de l étape précédente'}), stop "
                            f"{stop_pct:.0%}, objectif +{stop_pct * p['r_mult']:.0%} ({p['r_mult']}R)"
                            + (f" ; risque réduit ({plan['reason']})" if plan["reason"] else "")))
@@ -227,6 +243,17 @@ def decide(data, price_fn, now, slip=0.001):
         busy_pairs.add(pick["pair"])
         cands.remove(pick)
     return acts
+
+
+def chain_exploration(data, now, days=7):
+    """Anti-cercle vicieux : aucune étape de chaîne décidée depuis 7 jours (ou depuis la fin de la
+    lecture seule) -> une étape 1 d'exploration autorisée, demi-risque, seuil du niveau 1 moins 1."""
+    ro = cfg(data, "chain_readonly_until")
+    ref = ts_of(ro) if ro else 0
+    for st in data.get("steps", []):
+        if st.get("decided_at"):
+            ref = max(ref, ts_of(st["decided_at"]))
+    return bool(ref) and now - ref >= days * DAY
 
 
 def _last_close(data, chain_id):

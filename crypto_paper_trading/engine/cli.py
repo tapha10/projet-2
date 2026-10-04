@@ -319,6 +319,41 @@ def mark_open_positions(st, sources, now):
     return marks, notes  # positions sans prix : la base garde leur dernière marque (fusion)
 
 
+def exploration_arms(st, cfg, now):
+    """Anti-cercle vicieux (04/10/2026) : un bras sans aucune entrée depuis N jours (7 par défaut,
+    `config.exploration_after_days`) peut prendre UNE entrée d'exploration par passage, à demi-risque."""
+    days = float(cfgv(cfg, "exploration_after_days", 7))
+    start = cfgv(cfg, "demo_started_at")
+    start_ts = stats.parse_ts(start) if start else now
+    last = st.get("last_entry") or {}
+    arms = set()
+    for arm in ARMS:
+        ref = stats.parse_ts(last[arm]) if last.get(arm) else start_ts
+        if now - ref >= days * DAY:
+            arms.add(arm)
+    note = ([f"- exploration possible (aucune entrée depuis {days:g} j) : bras {', '.join(sorted(arms))}"]
+            if arms else [])
+    return arms, note
+
+
+def pick_exploration(decisions, rules, explore_arms):
+    """Choisit au plus UN signal d'exploration : refusé seulement pour un score inférieur d'au plus
+    1 point au seuil, sans aucune alerte (jamais la bougie du signal, jamais un unlock ou un transfert)."""
+    if not explore_arms or any(d["decision"] == "enter" for d in decisions):
+        return None
+    thr = float(rules.get("min_score_enter", 3))
+    cands = [d for d in decisions if d["decision"] == "skip" and not d.get("alerts")
+             and str(d.get("reason", "")).startswith("score") and d.get("score") is not None
+             and thr - 1 <= float(d["score"]) < thr]
+    if not cands:
+        return None
+    d = max(cands, key=lambda d: float(d["score"]))
+    d["decision"], d["explore"] = "enter", True
+    d["reason"] = (f"EXPLORATION (aucune entrée depuis 7 j) : score {float(d['score']):g} >= seuil {thr:g} - 1, "
+                   f"sans alerte ; demi-risque (0,5 %) pour sortir du cercle « pas de trade, pas d'apprentissage »")
+    return d
+
+
 def arm_capacity(st):
     """Places disponibles par bras aujourd'hui, compte tenu de tous les plafonds."""
     cfg = st["config"]
@@ -485,7 +520,9 @@ def cmd_decide(a):
                "weights_version": cfgv(cfg, "signal_weights", {}).get("version")},
             reevaluate_after=now + 0.8 * DAY if dec == "wait" else None))
 
-    blocks, summary = [f"select paper_set_marks({q(marks)});\n"], list(mark_notes)
+    explore_arms, explore_note = exploration_arms(st, cfg, now)
+    pick_exploration(decisions, rules, explore_arms)
+    blocks, summary = [f"select paper_set_marks({q(marks)});\n"], list(mark_notes) + explore_note
     if a.tiers:  # addendum 2ter (n'altère pas les décisions ni les positions A/B/C)
         from . import cli2ter
         fetch2 = cli2ter.default_fetch(sources)
@@ -513,10 +550,16 @@ def cmd_decide(a):
                 if (arm, d["pair"]) in open_pairs:
                     blocked.append(f"bras {arm} : pair déjà ouvert")
                     continue
+                if d.get("explore") and arm not in explore_arms:
+                    blocked.append(f"bras {arm} : entrée récente, pas d'exploration")
+                    continue
                 version = st["arms"][arm]["active_version"]
+                ccfg = {k: cfgv(cfg, k) for k in cfg}
+                if d.get("explore"):                       # exploration : demi-risque
+                    ccfg["risk_pct"] = float(cfgv(cfg, "risk_pct", 0.01)) * 0.5
                 try:
                     plan = risk.plan_position(version["params"], entry, float(st["arms"][arm]["equity"]),
-                                              {k: cfgv(cfg, k) for k in cfg}, d.get("atr"), open_margin[arm])
+                                              ccfg, d.get("atr"), open_margin[arm])
                 except ValueError as e:
                     blocked.append(f"bras {arm} : {e}")
                     continue
@@ -777,6 +820,24 @@ class CandleCache:
         return self.cache[key]
 
 
+def counterfactual_trades(h, arm, exclude_signal_ids, now=None):
+    """Signaux non entrés dans ce bras dont les 10 jours sont écoulés, sous forme de « trades »
+    rejouables (entrée au prix de détection). Un seul par événement indépendant (même pair < 10 j)."""
+    now = now or now_ts()
+    rows = []
+    for s in h.get("signals", []):
+        if s.get("is_reference") or s["id"] in exclude_signal_ids or not s.get("price_at_detection"):
+            continue
+        det = stats.parse_ts(s["detected_at"])
+        if now - det < 10 * DAY:
+            continue
+        rows.append(dict(pair=s["pair"], ts=det, signal_id=s["id"], opened_at=s["detected_at"],
+                         entry_price=s["price_at_detection"], atr_at_entry=(s.get("metrics") or {}).get("atr14"),
+                         arm=arm, counterfactual=True))
+    from . import features
+    return [dict(e["members"][0]) for e in features.cluster_events(rows)]
+
+
 def replay_trade(t, params, cfg, cache):
     rows = cache.get(t["pair"], stats.parse_ts(t["opened_at"]))
     if not rows:
@@ -888,8 +949,17 @@ def cmd_adapt(a):
             v = active[arm]
             trades = [p for p in closed if p["arm"] == arm]
             if len(trades) < MIN_TRADES:
-                msgs.append(f"Bras {arm} : {len(trades)}/{MIN_TRADES} trades fermés, aucun changement.")
-                continue
+                # Anti-cercle vicieux (GUARDRAILS section 8, 04/10/2026) : sans 30 trades fermés, on
+                # complète avec les signaux NON pris dont la fenêtre de 10 jours est terminée, rejoués
+                # avec le moteur existant (« trades contrefactuels »), un seul par événement indépendant.
+                pool = trades + counterfactual_trades(h, arm, {p.get("signal_id") for p in trades})
+                if len(pool) < MIN_TRADES:
+                    msgs.append(f"Bras {arm} : {len(trades)} trade(s) fermé(s) + {len(pool) - len(trades)} "
+                                f"contrefactuel(s) = {len(pool)}/{MIN_TRADES}, aucun changement.")
+                    continue
+                msgs.append(f"Bras {arm} : {len(trades)} trade(s) fermé(s) complété(s) par "
+                            f"{len(pool) - len(trades)} trade(s) contrefactuel(s) (signaux non pris).")
+                trades = pool
             train, test = stats.walk_forward_split(trades, key=lambda p: stats.parse_ts(p["opened_at"]))
             base_train = evaluate(train, v["params"], cfg, cache)
             best = None
