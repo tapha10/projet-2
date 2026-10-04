@@ -139,3 +139,18 @@ def test_edge_verdicts():
     assert edge_verdict(600, 400, 0.56, 3, 5, ["M0", "M1", "M2", "M3", "M4"])[0] == "avantage mesuré"
     assert edge_verdict(600, 300, 0.56, 3, 5, ["M0", "M1", "M2", "M3", "M4"])[0] == "aucun avantage mesuré"
     assert edge_verdict(600, 300, 0.56, 1, 5, ["M0", "M1", "M2", "M3", "M4"])[0] == "inconclusif"  # < 2 mois
+
+
+def test_upcoming_match_gets_same_features_as_training():
+    """Un match à venir reçoit les mêmes variables (dont l'enjeu) que s'il était dans l'historique."""
+    df = synthetic_league(rounds=3)
+    last_day = df.date.max()
+    full = match_features(df)
+    up = df.copy()
+    up.loc[up.date == last_day, ["fthg", "ftag"]] = np.nan
+    fut = match_features(up)
+    cols = ["h_played_season", "a_played_season", "h_rest_days", "h_pts_before", "h_frac_season",
+            "h_gap_top", "a_gap_releg", "h_ew_over", "a_ew_tot"]
+    a = full.loc[full.date == last_day, cols].reset_index(drop=True)
+    b = fut.loc[fut.date == last_day, cols].reset_index(drop=True)
+    pd.testing.assert_frame_equal(a.astype(float), b.astype(float), check_exact=False, atol=1e-9)

@@ -6,23 +6,46 @@ Chaque routine est une session Claude Code planifiée (heure de Paris), qui part
 L'état de référence est dans **Supabase** (tables `foot_*` du projet `foot-paper-analysis`). La base SQLite
 locale n'est qu'une copie de travail reconstruite à chaque exécution.
 
+## Deux modes d'état (`python -m foot.cli mode`)
+
+- **`git`** (repli, actif tant que le projet Supabase n'existe pas) : l'état se reconstruit en rejouant le journal
+  SQL versionné `foot/etat/journal/*.sql` (un fichier par exécution, donc pas de conflit git).
+- **`supabase`** (cible) : l'état de référence est dans les tables `foot_*` du projet Supabase `foot-paper-analysis`.
+  Le journal git continue d'être écrit, comme copie d'audit.
+
 ## Préambule commun (toutes les routines)
 
 1. `git fetch origin claude/foot-paper-analysis && git checkout claude/foot-paper-analysis && git pull origin claude/foot-paper-analysis`
 2. `cd foot && pip install -q -r requirements.txt`
-3. `python -m pytest -q tests` — **si un test échoue : ne rien exécuter**, faire `not-run` (étape 7) avec le motif, appliquer la boîte d'envoi, et s'arrêter.
-4. **Verrou** : exécuter sur Supabase (outil SQL, projet foot-paper-analysis) la sortie de
-   `python -m foot.cli lock-sql acquire <RX-AAAAMMJJHHMM>`. Si aucune ligne n'est renvoyée, une autre routine
-   tourne : attendre environ 3 minutes (boucle d'attente, pas de `sleep` nu) et réessayer **une fois**. Toujours
-   occupé : `not-run RX "verrou occupé"`, appliquer la boîte d'envoi, s'arrêter.
-5. **État** : exécuter sur Supabase la requête de `python -m foot.cli state-query`. Enregistrer la valeur JSON de
-   la colonne `state` dans `data/state/state.json`, puis lancer `python -m foot.cli state-load-json data/state/state.json`.
-6. **Dépendance** : `python -m foot.cli gate RX`. En cas de blocage (la routine précédente a échoué) : attendre
-   environ 5 minutes, recharger l'état (étape 5), relancer `gate` une fois. Toujours bloqué : `not-run RX "<motif>"`.
-7. Après la commande de la routine : appliquer sur Supabase **tout** le contenu de `data/state/outbox.sql`
-   (`python -m foot.cli outbox`), par blocs d'environ 200 lignes si nécessaire, puis `python -m foot.cli outbox --clear`.
-8. Libérer le verrou : SQL de `python -m foot.cli lock-sql release <même identifiant>`.
-9. Plus de **3 échecs** sur la même étape technique : s'arrêter et le signaler en détail (journal + rapport).
+3. `python -m pytest -q tests`. **Si un test échoue**, ne rien exécuter : faire `python -m foot.cli not-run RX "tests en échec : <détail>"`,
+   passer aux étapes 8 et 9, puis s'arrêter.
+4. Lire le mode (`python -m foot.cli mode`).
+   - Mode `supabase` : prendre le **verrou** en exécutant sur Supabase (outil SQL, projet foot-paper-analysis) la sortie de
+     `python -m foot.cli lock-sql acquire RX-AAAAMMJJHHMM`. Si aucune ligne n'est renvoyée, une autre routine tourne :
+     attendre environ 3 minutes (boucle d'attente, pas de `sleep` nu) et réessayer **une fois**. Toujours occupé :
+     `not-run RX "verrou occupé"`, étapes 8 et 9, arrêt.
+   - Mode `git` : pas de verrou partagé. Les fichiers de journal par exécution évitent les conflits.
+5. **État**.
+   - Mode `supabase` : exécuter sur Supabase la requête de `python -m foot.cli state-query`, enregistrer la valeur JSON
+     de la colonne `state` dans `data/state/state.json`, puis lancer `python -m foot.cli state-load-json data/state/state.json`.
+   - Mode `git` : `python -m foot.cli state-from-journal`.
+6. **Dépendance** : `python -m foot.cli gate RX`. Si elle bloque (la routine précédente a échoué) : attendre environ 5 minutes,
+   faire `git pull`, recharger l'état (étape 5), relancer `gate` une fois. Toujours bloquée : `not-run RX "<motif>"`, étapes 8 et 9.
+7. Lancer la commande de la routine (tableau ci-dessous).
+8. Mode `supabase` uniquement : appliquer sur Supabase **tout** le contenu de `data/state/outbox.sql`
+   (`python -m foot.cli outbox`), par blocs d'environ 200 lignes si nécessaire.
+9. Dans les deux modes : `python -m foot.cli journal-write RX`, puis
+   `git add etat rapports docs models_store && git commit -m "RX AAAA-MM-JJ" && git push -u origin claude/foot-paper-analysis`
+   (en cas de refus : `git pull --rebase origin claude/foot-paper-analysis`, puis repousser ; jusqu'à 4 essais).
+   Mode `supabase` : libérer le verrou avec le SQL de `python -m foot.cli lock-sql release <même identifiant>`.
+10. Plus de **3 échecs** sur la même étape technique : s'arrêter et le signaler en détail (journal + résumé final).
+
+## Passage au mode Supabase (une seule fois, dès qu'une place est libre)
+
+1. Créer le projet `foot-paper-analysis` (organisation de l'utilisateur, région eu-west-3). Ne toucher à aucun autre projet.
+2. Appliquer `migrations/001_foot_init.sql`, puis vérifier les alertes de sécurité.
+3. Appliquer **dans l'ordre** tous les fichiers `etat/journal/*.sql` (ils sont rejouables : `on conflict do nothing`).
+4. Écrire `supabase` dans `etat/MODE`, mettre à jour `docs/memoire.md`, commit + push.
 
 Dépendances vérifiées par `gate` : R2←R1, R4←R3, R5←R3, R6←R4. R1 et R3 ne dépendent que des tests et du verrou.
 

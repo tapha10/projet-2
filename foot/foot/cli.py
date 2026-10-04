@@ -126,8 +126,8 @@ def cmd_r1(a):
         cfg["_m4_poids"] = m4w
     out = run_r1(s, hist, fx, captured, day, cfg, hist_base=None, now=now_utc(), learned=learned)
     c = out["combos"]["principal"]
-    print(f"{AVERTISSEMENT}\nPhase {out['phase']} — {len(out['decisions'])} matchs évalués, "
-          f"{sum(d.get('retenu', False) for d in out['decisions'])} sélection(s).")
+    print(f"{AVERTISSEMENT}\nPhase {out['phase']} — {len(out['fx'])} match(s) du jour couvert(s) par la source, "
+          f"{len(out['decisions'])} sélection(s) du modèle actif.")
     for l in c["legs"]:
         print(f"  {l['home']} – {l['away']} ({l['league']}) {l['side']} @ {l['odds']:.2f} p={l['p']:.3f} ev={l['ev']:+.3f}")
     if c["legs"]:
@@ -295,6 +295,44 @@ def cmd_lesson(a):
     s.flush_outbox(OUTBOX)
 
 
+JOURNAL = ROOT / "etat" / "journal"
+MODE_FILE = ROOT / "etat" / "MODE"
+
+
+def mode():
+    return MODE_FILE.read_text().strip() if MODE_FILE.exists() else "git"
+
+
+def cmd_mode(a):
+    print(mode())
+
+
+def cmd_state_from_journal(a):
+    """Mode de repli (sans Supabase) : reconstruit la base locale en rejouant le journal SQL versionné."""
+    s = store()
+    files = sorted(JOURNAL.glob("*.sql")) if JOURNAL.exists() else []
+    n = 0
+    for f in files:
+        sql = f.read_text(encoding="utf-8")
+        if sql.strip():
+            s.con.executescript(sql)
+            n += 1
+    s.con.commit()
+    print(f"{n} fichier(s) de journal rejoué(s)")
+
+
+def cmd_journal_write(a):
+    """Déplace la boîte d'envoi vers un fichier de journal daté (un fichier par exécution : pas de conflit git)."""
+    if not OUTBOX.exists() or not OUTBOX.read_text(encoding="utf-8").strip():
+        print("boîte d'envoi vide")
+        return
+    JOURNAL.mkdir(parents=True, exist_ok=True)
+    name = f"{now_utc().strftime('%Y%m%dT%H%M%S')}-{a.routine}.sql"
+    (JOURNAL / name).write_text(OUTBOX.read_text(encoding="utf-8"), encoding="utf-8")
+    OUTBOX.unlink()
+    print(JOURNAL / name)
+
+
 def cmd_dump_queries(a):
     for t, q in dump_queries().items():
         print(f"-- {t}\n{q}")
@@ -320,6 +358,9 @@ def main(argv=None):
     r6 = sub.add_parser("r6"); r6.add_argument("--day"); r6.set_defaults(f=cmd_r6)
     sl = sub.add_parser("state-load"); sl.add_argument("dir"); sl.set_defaults(f=cmd_state_load)
     sub.add_parser("dump-queries").set_defaults(f=cmd_dump_queries)
+    sub.add_parser("mode").set_defaults(f=cmd_mode)
+    sub.add_parser("state-from-journal").set_defaults(f=cmd_state_from_journal)
+    jw = sub.add_parser("journal-write"); jw.add_argument("routine"); jw.set_defaults(f=cmd_journal_write)
     slj = sub.add_parser("state-load-json"); slj.add_argument("file"); slj.set_defaults(f=cmd_state_load_json)
     sq = sub.add_parser("state-query"); sq.add_argument("--days", type=int, default=120); sq.set_defaults(f=cmd_state_query)
     g = sub.add_parser("gate"); g.add_argument("routine"); g.set_defaults(f=cmd_gate)

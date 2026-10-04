@@ -152,3 +152,24 @@ def test_missing_source_data_stays_empty():
                         "AwayTeam": ["B"], "Avg>2.5": ["-0.25"], "Avg<2.5": ["2.6"]})
     df = normalize(raw, "2627")
     assert pd.isna(df.loc[0, "o_over_avg"]) and pd.isna(df.loc[0, "fthg"])
+
+
+def test_outbox_sql_replays_into_fresh_local_base():
+    """Le journal SQL (syntaxe Postgres) se rejoue dans une base locale neuve : mode de repli sans Supabase."""
+    s = Store()
+    s.insert("foot_config", {"key": "date_jour1", "value": '"2026-10-05"'}, upsert=True)
+    s.insert("foot_matches", {"match_id": "x", "league": "E0", "home": "A", "away": "B"})
+    s.insert("foot_predictions", {"id": "p", "match_id": "x", "model": "M3", "model_version": "M3-v1",
+                                  "side": "over", "prob": 0.6, "odds": 1.8, "selected": 1, "phase": "2",
+                                  "counted": 0, "kickoff": "2026-10-05T15:00:00+00:00",
+                                  "locked_at": "2026-10-05T08:00:00+00:00", "payload_hash": "h"})
+    s.insert("foot_lessons", {"error": "e", "rule": "r", "active": 1})
+    s.insert("foot_features", {"match_id": "x", "model_version": "all-v1", "computed_at": "2026-10-05T08:00:00+00:00",
+                               "data_cutoff": "2026-10-05T07:30:00+00:00", "features": {"p_m0": 0.5}})
+    sql = s.flush_outbox()
+    s2 = Store()
+    s2.con.executescript(sql + "\n" + sql)  # rejoué deux fois : aucune erreur, aucun doublon
+    assert s2.query("select count(*) n from foot_predictions")[0]["n"] == 1
+    assert s2.query("select count(*) n from foot_features")[0]["n"] == 1
+    assert s2.query("select value from foot_config")[0]["value"] == '"2026-10-05"'
+    assert s2.query("select selected, counted from foot_predictions")[0] == {"selected": 1, "counted": 0}

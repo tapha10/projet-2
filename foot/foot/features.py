@@ -128,6 +128,24 @@ def _fill_upcoming(out, done, st, cols, halflife):
             out.at[i, f"{side}_played_season"] = len(cur)
             out.at[i, f"{side}_rest_days"] = (row.date - hist.date.iloc[-1]).days
             out.at[i, f"{side}_pts_before"] = float(cur.pts.sum())
+        # enjeu : avancement de saison et écarts, avec les totaux de points connus avant la date du match
+        ls = tl[(tl.league == row.league) & (tl.season == row.season) & (tl.date < row.date)]
+        if ls.empty:
+            continue
+        totals = ls.groupby("team").pts.sum().sort_values(ascending=False)
+        n_teams = max(ls.team.nunique(), 2)
+        total_games = 2 * (n_teams - 1)
+        for side, team in (("h", row.home), ("a", row.away)):
+            played = out.at[i, f"{side}_played_season"]
+            if pd.isna(played):
+                continue
+            pts = float(totals.get(team, 0.0))
+            out.at[i, f"{side}_frac_season"] = played / total_games
+            if len(totals) >= 4:
+                gt, gr = totals.iloc[0] - pts, pts - totals.iloc[-3]
+                out.at[i, f"{side}_gap_top"], out.at[i, f"{side}_gap_releg"] = gt, gr
+                mx = 3 * max(total_games - played, 0)
+                out.at[i, f"{side}_nothing_to_play"] = float(gt > mx and gr > mx)
     return out
 
 

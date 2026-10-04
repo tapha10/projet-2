@@ -7,8 +7,9 @@ Dernière mise à jour : 04/10/2026 (Phase 0, mise en place).
 ## Où est quoi
 
 - Code : branche `claude/foot-paper-analysis` du dépôt `tapha10/projet-2`, dossier `foot/`.
-- État de référence : Supabase, projet `foot-paper-analysis`, tables `foot_*` (**pas encore créé** : en attente
-  d'une place libre sur l'offre gratuite). Ne jamais toucher aux autres projets, en particulier `crypto-paper-trading`.
+- État de référence : **mode `git`** (journal SQL `etat/journal/*.sql`, rejoué à chaque routine) tant que le projet
+  Supabase `foot-paper-analysis` n'existe pas (offre gratuite pleine). Ensuite : Supabase, tables `foot_*`.
+  Ne jamais toucher aux autres projets, en particulier `crypto-paper-trading`.
 - Guide des routines : `docs/routines.md`. Audit : `docs/audit.md`. Backtest : `docs/backtest.md`. Tests : `docs/tests.md`.
 
 ## Calendrier des phases
@@ -17,7 +18,7 @@ Dernière mise à jour : 04/10/2026 (Phase 0, mise en place).
 - Phase 1 : 05–06/10/2026. Base historique **déjà constituée** le 04/10 : 40 118 matchs, 22 championnats, 2021-22 à 2026-27.
   Le premier combiné (05/10) est produit avec les modèles de départ et marqué « observation ».
 - Phase 2 : à partir du 07/10/2026, jusqu'au 16e jour ou à 100 prédictions comptées.
-- Activation : le jour où tous les tests sont verts **et** Supabase est en place ; puis 3 jours en lecture seule (`counted = false`).
+- Activation : 05/10/2026 (tous les tests verts), en mode `git`. Lecture seule les 05, 06 et 07/10 (`counted = false`) ; prédictions comptées à partir du 08/10.
 
 ## Modèle actif et règles actives
 

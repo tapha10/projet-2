@@ -2,7 +2,7 @@
 
 _Simulation papier, pas un conseil de pari ; parier de l'argent réel comporte un risque de perte._
 
-Commande : `cd foot && python -m pytest -q tests`. Résultat du 04/10/2026 : **44 tests, 44 réussis**.
+Commande : `cd foot && python -m pytest -q tests`. Résultat du 04/10/2026 : **46 tests, 46 réussis**.
 
 ## Correspondance avec la section 12
 
@@ -25,7 +25,8 @@ Commande : `cd foot && python -m pytest -q tests`. Résultat du 04/10/2026 : **4
 | Migrations jouées deux fois sans perte ; schémas Postgres et SQLite identiques | `test_migrations_run_twice_without_loss`, `test_postgres_and_sqlite_schemas_match` |
 | Cycle complet R1→R6 en mode sec sur 14 jours | `test_full_cycle_dry_replay_14_days` (synthétique) + rejeu réel ci-dessous |
 | La mémoire empêche de relancer un test | `test_memory_prevents_rerun` |
-| Reprise après coupure (état Supabase → base locale, `memoire.md`) | `test_restart_from_dump` |
+| Reprise après coupure (état Supabase ou journal git → base locale, `memoire.md`) | `test_restart_from_dump`, `test_outbox_sql_replays_into_fresh_local_base` |
+| Un match à venir reçoit les mêmes variables qu'à l'entraînement | `test_upcoming_match_gets_same_features_as_training` |
 | Verrou et routine en échec | `test_lock_prevents_concurrent_routines`, `test_failed_routine_logged` |
 | Sources testées, échec géré sans fausser les données | `test_source_failures_handled`, `test_missing_source_data_stays_empty` + audit réel (`docs/audit.md`) |
 
@@ -43,7 +44,8 @@ Commande : `cd foot && python -m pytest -q tests`. Résultat du 04/10/2026 : **4
 ### Intégration et sources
 - test_migrations_run_twice_without_loss ✅
 - test_postgres_and_sqlite_schemas_match ✅
-- test_full_cycle_dry_replay_14_days ✅
+- test_full_cycle_dry_replay_14_days
+- test_outbox_sql_replays_into_fresh_local_base ✅
 - test_memory_prevents_rerun ✅
 - test_restart_from_dump ✅
 - test_lock_prevents_concurrent_routines ✅
@@ -60,7 +62,8 @@ Commande : `cd foot && python -m pytest -q tests`. Résultat du 04/10/2026 : **4
 - test_real_signal_is_found ✅
 - test_200_random_variables_not_retained ✅
 - test_small_sample_inconclusive ✅
-- test_edge_verdicts ✅
+- test_edge_verdicts
+- test_upcoming_match_gets_same_features_as_training ✅
 
 ### Unitaires
 - test_remove_margin_proportional ✅
@@ -92,4 +95,6 @@ Commande : `cd foot && python -m pytest -q tests`. Résultat du 04/10/2026 : **4
 
 ## Activation
 
-Tous les tests sont verts. L'activation (routines planifiées) attend la création du projet Supabase : il faut une place libre sur l'offre gratuite. Après l'activation : 3 jours en lecture seule (`counted = false`).
+Tous les tests sont verts : les routines sont activées le 05/10/2026 en mode `git` (repli), en attendant que le projet
+Supabase puisse être créé. Elles passeront en mode `supabase` dès qu'une place se libère. Après l'activation : 3 jours en
+lecture seule (prédictions enregistrées avec `counted = false`, du 05 au 07/10).
