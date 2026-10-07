@@ -37,9 +37,23 @@ class PositionsMd(unittest.TestCase):
                           detected_at="2026-10-05T10:00:00+00:00")]
         self.assertIn("Aucun signal en attente", "\n".join(positions_md.waits_section(sig, NOW, {})))
 
+    def test_bilan(self):
+        pos = POS + [dict(id=3, arm="B", pair="YUSDT", status="closed", entry_price=1.0, size_usd=80, pnl_usd=-9.84,
+                          exit_reason="sl", closed_at="2026-10-05T05:00:00+00:00"),
+                     dict(id=4, arm="B", pair="ZUSDT", status="closed", entry_price=1.0, size_usd=80, pnl_usd=-0.27,
+                          exit_reason="breakeven", closed_at="2026-10-05T06:00:00+00:00"),
+                     dict(id=5, arm="C", pair="WUSDT", status="closed", entry_price=1.0, size_usd=60, pnl_usd=12.0,
+                          exit_reason="tp", closed_at="2026-10-05T07:00:00+00:00")]
+        md = "\n".join(positions_md.bilan_section(pos, {"XUSDT": 1.2}, 1000, NOW))
+        self.assertIn("| B (stop serré) | 1 | 1 | 0 | 0 / 1 / 1 | -10.11 $ | +16.67 $ |", md)
+        self.assertIn("- **C** — fermés : W +12.00 $ (objectif)", md)
+        self.assertIn("- **A** — en gain : X +8.00 $", md)
+        self.assertIn("1 paire(s) différente(s)", md)
+
     def test_email_keeps_key_sections(self):
-        md = "# T\n\n## En bref\n\nx\n\n## 2. Comparaison\n\ny\n\n## Mes positions ouvertes (détail)\n\nz\n"
+        md = "# T\n\n## En bref\n\nx\n\n## Bilan par portefeuille (gagnants / perdants)\n\nb\n\n## 2. Comparaison\n\ny\n\n## Mes positions ouvertes (détail)\n\nz\n"
         e = cli.email_md(md)
+        self.assertIn("## Bilan par portefeuille", e)
         self.assertIn("## Mes positions ouvertes", e)
         self.assertNotIn("2. Comparaison", e)
 

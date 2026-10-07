@@ -124,6 +124,67 @@ def positions_section(open_positions, signals, prices, now):
     return L
 
 
+EXIT_FR = {"sl": "stop", "tp": "objectif", "breakeven": "équilibre", "trailing": "stop suiveur",
+           "max_hold": "durée max", "liquidation": "liquidation"}
+BOOKS = ("A", "B", "C", "T", "K")
+
+
+def _usd(x):
+    return f"{x:+.2f} $"
+
+
+def bilan_section(positions, prices, cap0, now):
+    """Bilan par portefeuille : paires ouvertes, gagnants / perdants (latent et trades fermés), résultat réalisé,
+    capital estimé. Latent calculé hors frais et funding."""
+    L = ["## Bilan par portefeuille (gagnants / perdants)\n"]
+    rows, detail = [], []
+    tot = dict(cap=0.0, base=0.0)
+    for arm in BOOKS:
+        ps = [p for p in positions if p.get("arm") == arm]
+        op = [p for p in ps if p["status"] == "open"]
+        cl = [p for p in ps if p["status"] == "closed"]
+        lat = {}
+        for p in op:
+            last = prices.get(p["pair"])
+            lat[p["id"]] = float(p.get("size_usd") or 0) * (last / float(p["entry_price"]) - 1) if last else 0.0
+        win_o = sorted([p for p in op if lat[p["id"]] > 0.005], key=lambda p: -lat[p["id"]])
+        los_o = sorted([p for p in op if lat[p["id"]] < -0.005], key=lambda p: lat[p["id"]])
+        pnl = lambda p: float(p.get("pnl_usd") or 0)
+        eq = lambda p: p.get("exit_reason") == "breakeven" or abs(pnl(p)) < 0.5
+        win_c = [p for p in cl if pnl(p) > 0 and not eq(p)]
+        los_c = [p for p in cl if pnl(p) < 0 and not eq(p)]
+        eq_c = [p for p in cl if eq(p)]
+        real = sum(pnl(p) for p in cl)
+        latent = sum(lat.values())
+        cap = cap0 + real + latent
+        if arm in ("A", "B", "C"):
+            tot["cap"] += cap
+            tot["base"] += cap0
+        rows.append(f"| {ARM_FR.get(arm, arm)} | {len(op)} | {len(win_o)} | {len(los_o)} | {len(win_c)} / {len(los_c)} / "
+                    f"{len(eq_c)} | {_usd(real)} | {_usd(latent)} | {cap:.2f} $ | {cap / cap0 - 1:+.1%} |")
+        bits = []
+        short = lambda p: p["pair"].replace("USDT", "")
+        if win_o:
+            bits.append("en gain : " + ", ".join(f"{short(p)} {_usd(lat[p['id']])}" for p in win_o))
+        if los_o:
+            bits.append("en perte : " + ", ".join(f"{short(p)} {_usd(lat[p['id']])}" for p in los_o))
+        if cl:
+            bits.append("fermés : " + ", ".join(f"{short(p)} {_usd(pnl(p))} ({EXIT_FR.get(p.get('exit_reason'), p.get('exit_reason'))})"
+                                                for p in sorted(cl, key=lambda p: p["closed_at"])))
+        detail.append(f"- **{arm}** — " + (" ; ".join(bits) if bits else "aucune position."))
+    L.append("| Portefeuille | Paires ouvertes | Ouvertes en gain | Ouvertes en perte | Fermés : gagnants / perdants / "
+             "équilibre | Réalisé | Latent | Capital estimé | Variation |")
+    L.append("|---|---|---|---|---|---|---|---|---|")
+    L += rows
+    n_pairs = len({p["pair"] for p in positions if p["status"] == "open"})
+    L.append(f"\n**Total A+B+C** : {tot['cap']:.2f} $ sur {tot['base']:.0f} $ ({tot['cap'] / tot['base'] - 1:+.1%}) · "
+             f"{n_pairs} paire(s) différente(s) ouverte(s) tous portefeuilles confondus.\n")
+    L += detail
+    L.append("\n*Un trade fermé près de zéro (sortie à l'équilibre) n'est compté ni gagnant ni perdant. "
+             "Latent = valeur au dernier prix, hors frais et funding.*\n")
+    return L
+
+
 def pending_waits(signals):
     """Signaux encore en attente : le plus récent signal de la crypto doit être un « wait » (une réévaluation
     entrée ou abandonnée met fin à l'attente)."""

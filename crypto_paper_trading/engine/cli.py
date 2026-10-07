@@ -1142,6 +1142,7 @@ def cmd_report(a):
             prices = {t["pair"]: t["last"] for t in tk if t["pair"] in {p["pair"] for p in open_all} and t["last"]}
         except Exception:
             prices = {}
+    L += positions_md.bilan_section(h["positions"], prices, cap0, now)
     L += positions_md.positions_section(open_all, sig, prices, now)
     L += positions_md.waits_section(sig, now, cfgv(cfg, "entry_rules", {}) or {})
     L += positions_md.deadlines_section(open_all, sig, lambda k: cfgv(cfg, k), now)
@@ -1321,7 +1322,7 @@ def cmd_report(a):
     print(md)
 
 
-EMAIL_SECTIONS = ("En bref", "Lecture de la semaine", "Mes positions ouvertes", "En attente", "Prochaines échéances",
+EMAIL_SECTIONS = ("En bref", "Lecture de la semaine", "Bilan par portefeuille", "Mes positions ouvertes", "En attente", "Prochaines échéances",
                   "7. Calendrier", "Seuil de passage")
 
 
