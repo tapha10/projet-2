@@ -227,7 +227,7 @@ def glance(arms, t_book, per_tier, no_entry_reason):
 
 
 # ------------------------------------------------ seuil de passage au réel (GUARDRAILS 1 bis)
-GATE = dict(min_trades=50, min_weeks=12, ci_alpha=0.10, max_drawdown=0.15)
+GATE = dict(min_trades=50, min_weeks=3, ci_alpha=0.10, max_drawdown=0.15)
 
 
 def go_live_gate(arm_trades, daily, demo_started_ts, now_ts, incidents, gate=GATE):

@@ -55,6 +55,15 @@
      sur ses 20 derniers trades.
    Exécute tout le contenu de `$W/adapt.sql` (transaction). Les statistiques détaillées
    sont aussi dans `$W/adapt.json`.
+3 bis. **Portefeuille S (stratégie inverse, démo, GUARDRAILS section 11)** : mêmes règles que les autres
+   bras. `select inverse_state()::text as s, repeat('.', 60000) as pad;` (extrais avec
+   `python3 -m engine.mcp_extract <fichier> $W/inv_state.json s`), puis
+   `python3 -m engine.inverse adapt --state $W/inv_state.json --out $W/inv_adapt.sql` et exécute
+   `$W/inv_adapt.sql`. Moins de 30 trades fermés dans S : statistiques seulement. Au-delà : un seul
+   paramètre (stop, objectif ou durée) à ±20 %, choisi sur 70 % des trades anciens, gardé seulement si
+   la validation sur les 30 % récents et l'IC bootstrap 95 % de la différence sont positifs ; retour
+   arrière si la version récente fait moins bien que sa parente sur ses 20 derniers trades. Il écrit
+   `config.inverse_params` (nouvelles entrées seulement), `config.inverse_params_prev` et `iteration_log`.
 4. **Filtres d'entrée et poids des signaux** (`config.entry_rules`, `config.signal_weights`) :
    ne les modifie que si **au moins 30 signaux** ont un résultat contrefactuel
    (`counterfactual` non nul) **et** qu'un seul seuil ou poids change de ±20 % au plus,

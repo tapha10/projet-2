@@ -78,5 +78,59 @@ class Inverse(unittest.TestCase):
         self.assertTrue(sql.startswith("begin;") and sql.strip().endswith("commit;"))
 
 
+def _trades(n, fall=0.20):
+    out = []
+    for i in range(n):
+        t0 = T0 + i * 3600
+        out.append(dict(signal_id=i, pair="X%dUSDT" % i, opened_at=inverse.datetime.fromtimestamp(t0, tz=inverse.timezone.utc).isoformat(),
+                        entry_price=1.0, status="closed", closed_at="2026-10-10T00:00:00+00:00", r_multiple=0.3,
+                        pnl_usd=3.0))
+    return out
+
+
+def _fall_candles(t):
+    t0 = parse_ts(t["opened_at"])
+    return [dict(t=t0 + 900 * k, o=1 - 0.01 * k, h=1 - 0.01 * k + 0.002, l=1 - 0.01 * k - 0.002, c=1 - 0.01 * k)
+            for k in range(60)]
+
+
+class Adapt(unittest.TestCase):
+    NOW = T0 + 30 * 86400
+
+    def test_stats_only_below_30(self):
+        sql, msg, det = inverse.adapt(dict(params={}, inverse=_trades(12)), self.NOW, _fall_candles, lambda p: (lambda a, b: []))
+        self.assertEqual(sql, [])
+        self.assertIn("12/30", msg)
+
+    def test_promotes_one_param_within_20pct(self):
+        st = dict(params={}, inverse=_trades(40))
+        sql, msg, det = inverse.adapt(st, self.NOW, _fall_candles, lambda p: (lambda a, b: []))
+        self.assertTrue(det["promoted"], msg)
+        (k, v), = det["candidate"].items()
+        self.assertIn(k, inverse.TUNABLE)
+        self.assertLessEqual(abs(v / inverse.DEFAULTS[k] - 1), 0.2001)
+        self.assertTrue(any("update config set value" in x and "inverse_params" in x for x in sql))
+        self.assertFalse(any("positions" in x.replace("inverse_positions", "") for x in sql))
+
+    def test_waits_after_recent_change(self):
+        st = dict(params={}, inverse=_trades(40), prev=dict(params=dict(inverse.DEFAULTS), changed_at=_trades(40)[30]["opened_at"]))
+        sql, msg, det = inverse.adapt(st, self.NOW, _fall_candles, lambda p: (lambda a, b: []))
+        self.assertEqual(sql, [])
+        self.assertIn("attend", msg)
+
+    def test_rollback_when_worse(self):
+        tr = _trades(60)
+        prev = dict(params=dict(inverse.DEFAULTS, tp_pct=0.10), changed_at=tr[30]["opened_at"])
+        st = dict(params=dict(stop_pct=0.03), inverse=tr, prev=prev)   # stop trop serré : rebond de 5 % puis chute
+
+        def bounce(t):
+            cs = _fall_candles(t)
+            cs[1] = dict(cs[1], h=1.05)
+            return cs
+        sql, msg, det = inverse.adapt(st, self.NOW, bounce, lambda p: (lambda a, b: []))
+        self.assertTrue(det.get("rollback"), msg)
+        self.assertTrue(any("inverse_params" in x for x in sql))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -72,6 +72,7 @@ language sql stable set search_path = '' as $$
   select jsonb_build_object(
     'now', now(),
     'params', (select value from public.config where key = 'inverse_params'),
+    'prev', (select value from public.config where key = 'inverse_params_prev'),
     'sources', coalesce((
       select jsonb_agg(to_jsonb(s) order by s.opened_at)
       from (

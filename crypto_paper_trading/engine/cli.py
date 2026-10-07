@@ -1304,7 +1304,14 @@ def cmd_report(a):
     started = cfgv(cfg, "demo_started_at")
     incidents = sum(1 for x in h.get("iteration_log", [])
                     if isinstance(x.get("change"), dict) and x["change"].get("status") not in (None, "ok"))
-    L += recap.go_live_gate({arm: [p for p in closed if p["arm"] == arm] for arm in ARMS}, daily,
+    gate_trades = {arm: [p for p in closed if p["arm"] == arm] for arm in ARMS}
+    if getattr(a, "inverse_data", None):
+        try:
+            gate_trades["S"] = [r for r in (load_json_loose(a.inverse_data).get("inverse") or [])
+                                if r["status"] == "closed"]
+        except Exception:
+            pass
+    L += recap.go_live_gate(gate_trades, daily,
                             stats.parse_ts(started) if started else None, now, incidents)
     L.append("\n## 8. Limites et recommandation\n")
     L.append("- Démo : glissement réel et profondeur de marché ignorés (forfait 0,1 %) ; prix, bougies 1 min et "

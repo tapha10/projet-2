@@ -82,6 +82,6 @@ select 'maintenance',
        '{"decision":"propriétaire, 03/10/2026"}'::jsonb
  where not exists (select 1 from public.iteration_log where change->>'action' = 'drawdown_realise_plus_latent');
 
--- Début de la démo : sert au seuil de passage (GUARDRAILS section 1 bis, 12 semaines minimum).
+-- Début de la démo : sert au seuil de passage (GUARDRAILS section 1 bis, 3 semaines minimum depuis le 07/10/2026).
 insert into public.config(key, value) values ('demo_started_at', '"2026-10-03T00:00:00+00:00"'::jsonb)
   on conflict (key) do nothing;

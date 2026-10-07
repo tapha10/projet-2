@@ -77,11 +77,11 @@ class TestGoLiveGate(unittest.TestCase):
                      closed_at=f"2026-10-{i % 28 + 1:02d}") for i in range(60)]
         few = good[:10]
         md = "\n".join(recap.go_live_gate({"A": good, "B": few}, [], 0, 13 * 7 * 86400, 0))
-        self.assertIn("| A | 60/50 | 13.0/12 |", md)
+        self.assertIn("| A | 60/50 | 13.0/3 |", md)
         self.assertIn("✅ seuil atteint", md)
         self.assertIn("manque : 50 trades", md)
-        md = "\n".join(recap.go_live_gate({"A": good}, [], 0, 5 * 7 * 86400, 2))
-        self.assertIn("12 semaines", md)
+        md = "\n".join(recap.go_live_gate({"A": good}, [], 0, 2 * 7 * 86400, 2))
+        self.assertIn("3 semaines", md)
         self.assertIn("aucun incident non expliqué", md)
         self.assertIn("n'autorise aucun passage au réel", md)
         bad_dd = [dict(by_arm={"A": {"drawdown": 0.2}})]

@@ -17,7 +17,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from . import market, simulate
+from . import market, simulate, stats
 from .sqlgen import load_json_loose, q, qts
 from .stats import parse_ts
 
@@ -260,6 +260,124 @@ def to_sql(inserts, updates, log):
     return "\n".join(L) + "\n"
 
 
+# ----------------------------------------------------------------- adaptation (GUARDRAILS 8 + 11)
+MIN_TRADES = 30        # aucun changement avant 30 trades fermés dans S
+ROLLBACK_TRADES = 20   # retour arrière si la nouvelle version fait moins bien sur ses 20 derniers trades
+STEP = 0.20            # un seul paramètre à la fois, ±20 % au plus
+TUNABLE = ("stop_pct", "tp_pct", "hold_days")
+_FINE = {}
+
+
+def _fine_cached(pair):
+    def f(t0, t1):
+        key = (pair, t0, t1)
+        if key not in _FINE:
+            _FINE[key] = market.fine_candles(pair, t0, t1)[0]
+        return _FINE[key]
+    return f
+
+
+def replay_r(trade, p, candles, refine):
+    """R que ce trade aurait fait avec les paramètres p (mêmes entrées, mêmes bougies). Si rien n'est
+    tranché avant la fin des données, sortie à la dernière clôture (pas de gain imaginaire)."""
+    opened = parse_ts(trade["opened_at"]); entry = float(trade["entry_price"])
+    stop = entry * (1 + p["stop_pct"]); tp = entry * (1 - p["tp_pct"])
+    s = Short(dict(signal_id=trade["signal_id"], pair=trade["pair"], entry_price=entry, size_usd=100.0,
+                   leverage=2, stop_price=stop, initial_stop_price=stop, tp_price=tp, opened_at=trade["opened_at"],
+                   max_hold_until=datetime.fromtimestamp(opened + p["hold_days"] * 86400, tz=timezone.utc).isoformat()))
+    s.trail_pct = p.get("tp_trail_pct")
+    end = candles[-1]["t"] + 900 if candles else opened
+    res = simulate_short(s, candles, end, refine)
+    if res is None:
+        if not candles:
+            return None
+        res = dict(exit_price=candles[-1]["c"] * (1 + SLIP), exit_reason="open", exit_ts=end)
+    return settle(s, res)["r_multiple"]
+
+
+def candidates_of(p):
+    out = []
+    for k in TUNABLE:
+        for f in (1 - STEP, 1 + STEP):
+            q_ = dict(p); q_[k] = round(float(p[k]) * f, 4)
+            out.append((k, f, q_))
+    return out
+
+
+def adapt(state, now=None, candle_fn=None, refine_fn=None):
+    """Retourne (sql_lignes, message, détails). Mêmes garde-fous que les autres bras : 30 trades fermés,
+    un seul changement, ±20 %, walk-forward 70/30, IC bootstrap de la différence > 0, retour arrière."""
+    now = now or time.time()
+    p = params_of(state)
+    prev = state.get("prev") or {}
+    closed = sorted([r for r in state.get("inverse") or [] if r["status"] == "closed"],
+                    key=lambda r: parse_ts(r["opened_at"]))
+    n = len(closed)
+    rs = [float(r["r_multiple"]) for r in closed if r.get("r_multiple") is not None]
+    base = dict(n_closed=n, mean_r=stats.mean(rs), params=p)
+    if n < MIN_TRADES:
+        return [], f"Portefeuille S : {n}/{MIN_TRADES} trades fermés, statistiques seulement, aucun changement.", base
+    candle_fn = candle_fn or (lambda t: _rows(t["pair"], parse_ts(t["opened_at"]), now))
+    refine_fn = refine_fn or (lambda pair: _fine_cached(pair))
+    cache = {t["signal_id"]: candle_fn(t) for t in closed}
+
+    def rs_for(params, trades):
+        return [replay_r(t, params, cache[t["signal_id"]], refine_fn(t["pair"])) for t in trades]
+
+    # 1) retour arrière : la version issue d'une adaptation fait-elle moins bien que sa parente ?
+    if prev.get("params") and prev.get("changed_at"):
+        since = [t for t in closed if parse_ts(t["opened_at"]) >= parse_ts(prev["changed_at"])]
+        if len(since) >= ROLLBACK_TRADES:
+            last = since[-ROLLBACK_TRADES:]
+            new_r, old_r = rs_for(p, last), rs_for(params_of(dict(params=prev["params"])), last)
+            diff = [a - b for a, b in zip(new_r, old_r) if a is not None and b is not None]
+            if diff and stats.mean(diff) < 0:
+                msg = (f"ROLLBACK portefeuille S : sur les {len(diff)} derniers trades, la version actuelle fait "
+                       f"{stats.mean(diff):+.3f} R/trade de moins que la précédente ; retour aux paramètres précédents.")
+                sql = [f"update config set value={q(prev['params'])} where key='inverse_params';",
+                       f"update config set value={q({'params': p, 'changed_at': None, 'rolled_back': True})} where key='inverse_params_prev';",
+                       "insert into iteration_log(routine, change, rationale) values ('adaptation', "
+                       + q({"action": "inverse_rollback", "from": p, "to": prev["params"]}) + ", " + q(msg) + ");"]
+                return sql, msg, dict(base, rollback=True)
+    if prev.get("changed_at"):
+        since = [t for t in closed if parse_ts(t["opened_at"]) >= parse_ts(prev["changed_at"])]
+        if len(since) < ROLLBACK_TRADES:
+            return [], (f"Portefeuille S : dernier changement il y a moins de {ROLLBACK_TRADES} trades "
+                        f"({len(since)}), on attend avant d'en tester un autre."), base
+    # 2) walk-forward : choix sur 70 % anciens, validation sur 30 % récents
+    train, test = stats.walk_forward_split(closed, key=lambda r: parse_ts(r["opened_at"]))
+    cur_train = rs_for(p, train)
+    best = None
+    for k, f, cand in candidates_of(p):
+        c_train = rs_for(cand, train)
+        d = [a - b for a, b in zip(c_train, cur_train) if a is not None and b is not None]
+        if d and stats.mean(d) > 0 and (best is None or stats.mean(d) > best[0]):
+            best = (stats.mean(d), k, f, cand)
+    if best is None:
+        return [], "Portefeuille S : aucun candidat ne bat les paramètres actuels sur les trades anciens.", base
+    _, k, f, cand = best
+    cur_test, c_test = rs_for(p, test), rs_for(cand, test)
+    d_test = [a - b for a, b in zip(c_test, cur_test) if a is not None and b is not None]
+    d_all = [a - b for a, b in zip(rs_for(cand, closed), rs_for(p, closed)) if a is not None and b is not None]
+    ci = stats.bootstrap_mean_ci(d_all) if len(d_all) >= 2 else None
+    ok = bool(d_test and stats.mean(d_test) > 0 and ci and ci["lo"] > 0)
+    det = dict(base, candidate={k: cand[k]}, train=len(train), test=len(test),
+               test_diff_R=stats.mean(d_test) if d_test else None, ci=ci, promoted=ok)
+    if not ok:
+        return [], (f"Portefeuille S : candidat {k} {p[k]} → {cand[k]} rejeté (validation 30 % ou IC 95 % de "
+                    f"la différence non positifs)."), det
+    msg = (f"ADAPT portefeuille S : {k} {p[k]} → {cand[k]} ({f - 1:+.0%}), gain {stats.mean(d_all):+.3f} R/trade "
+           f"(IC 95 % [{ci['lo']:+.3f} ; {ci['hi']:+.3f}], validation sur {len(test)} trades récents).")
+    sql = [f"update config set value={q(dict(p, **{k: cand[k]}))} where key='inverse_params';",
+           "insert into config(key, value) values ('inverse_params_prev', "
+           + q({"params": p, "changed_at": datetime.fromtimestamp(now, tz=timezone.utc).isoformat()})
+           + ") on conflict (key) do update set value=excluded.value;",
+           "insert into iteration_log(routine, change, rationale, evidence) values ('adaptation', "
+           + q({"action": "inverse_adapt", "param": k, "from": p[k], "to": cand[k]}) + ", " + q(msg) + ", "
+           + q(det) + ");"]
+    return sql, msg, det
+
+
 def report_lines(rows, prices=None):
     """Résumé du portefeuille S (réalisé, latent, gagnants/perdants) pour le rapport."""
     prices = prices or {}
@@ -287,6 +405,7 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("run"); a.add_argument("--state", required=True); a.add_argument("--out", required=True)
     b = sub.add_parser("report"); b.add_argument("--state", required=True)
+    c = sub.add_parser("adapt"); c.add_argument("--state", required=True); c.add_argument("--out", required=True)
     args = ap.parse_args(argv)
     state = load_json_loose(args.state)
     if args.cmd == "run":
@@ -300,6 +419,11 @@ def main(argv=None):
         for e in log["errors"]:
             print("  erreur :", e)
         print("\n".join(report_lines(rows)))
+    elif args.cmd == "adapt":
+        sql, msg, det = adapt(state)
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write("begin;\n" + "\n".join(sql) + "\ncommit;\n" if sql else "select 1;\n")
+        print(msg)
     else:
         print("\n".join(report_lines(state.get("inverse") or [])))
 

@@ -23,7 +23,7 @@ n'est possible que lorsqu'**un bras** remplit **toutes** ces conditions :
 | Condition | Seuil |
 |---|---|
 | Trades fermés du bras | **≥ 50** |
-| Durée de la démo (depuis `config.demo_started_at`, le 03/10/2026) | **≥ 12 semaines** |
+| Durée de la démo (depuis `config.demo_started_at`, le 03/10/2026) | **≥ 3 semaines** (ramené de 12 à 3 le 07/10/2026 à la demande du propriétaire) |
 | R moyen par trade | **> 0** et intervalle de confiance bootstrap à **90 %** entièrement positif |
 | Drawdown maximum (réalisé + latent) | **< 15 %** |
 | Incidents de données ou d'exécution | **aucun** non expliqué |
@@ -177,8 +177,9 @@ par signal, au même prix d'entrée) et les rejoue sur l'historique.
 
 Les valeurs de départ (stop 30 %, objectif 10 %, option de TP « suiveur » `tp_trail_pct`) sont dans
 `config.inverse_params` ; elles ne s'appliquent qu'aux **nouvelles** entrées et suivent la règle de la
-section 8 (aucun changement avant 30 trades fermés dans S, un seul à la fois, ±20 %, walk-forward,
-bootstrap). Levier, risque, 8 positions et 3 entrées par jour sont plafonnés dans le code. Le portefeuille
+section 8, appliquée automatiquement par `python3 -m engine.inverse adapt` (aucun changement avant
+30 trades fermés dans S, un seul à la fois parmi stop / objectif / durée, ±20 %, walk-forward 70/30,
+IC bootstrap > 0, retour arrière sur 20 trades). Levier, risque, 8 positions et 3 entrées par jour sont plafonnés dans le code. Le portefeuille
 S ne compte pas dans le seuil de la section 1 bis et **ne donne aucun droit** à un passage en réel.
 
 ## Relectures avec le propriétaire
@@ -190,3 +191,4 @@ S ne compte pas dans le seuil de la section 1 bis et **ne donne aucun droit** à
 | 04/10/2026 | Prompt 3 : section 10 (chaînes de victoires, portefeuille K), règles fournies par le propriétaire. |
 | 04/10/2026 | Section 8 : anti-cercle vicieux (trades contrefactuels pour l'adaptation, exploration à demi-risque après 7 jours sans entrée), à la demande du propriétaire. Limites des sections 1 à 4 inchangées. |
 | 07/10/2026 | Section 11 : portefeuille S (stratégie inverse, short, démo) dans une table séparée, stop 30 % / objectif 10 % ; sections 1 à 4 inchangées, démo maintenue, aucun passage en réel. |
+| 07/10/2026 | Section 1 bis : durée minimale de démo ramenée de **12 à 3 semaines** (à la demande du propriétaire) ; les autres conditions (50 trades fermés, R moyen > 0 avec IC 90 % entièrement positif, drawdown < 15 %, aucun incident) sont inchangées ; atteindre le seuil n'autorise toujours rien : il rouvre seulement la relecture de ce fichier ensemble. Le portefeuille S est évalué comme les autres bras. |
