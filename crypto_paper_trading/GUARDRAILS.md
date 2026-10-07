@@ -157,6 +157,30 @@ stop qui est élargi. La routine n'ouvre jamais de position hors du papier et ne
 ces plafonds ; l'auto-optimisation (seuils de score par niveau) ne peut modifier ni ce fichier ni
 ces limites. Les bras A, B, C et le portefeuille T gardent leurs règles (sections 3 et 9).
 
+## 11. Portefeuille « S » — stratégie inverse (short), démo uniquement (ajouté le 07/10/2026 à la demande du propriétaire)
+
+Les sections 1 à 4 restent en vigueur, **y compris « long uniquement » pour la table `positions`** :
+aucun short n'y entre jamais. La stratégie inverse vit dans une **table séparée**
+`inverse_positions` (`sql/011_inverse.sql`, code `engine/inverse.py`), **papier uniquement**,
+sans exchange, sans clé, sans ordre. Elle reprend chaque entrée longue des bras A, B, C et T (un short
+par signal, au même prix d'entrée) et les rejoue sur l'historique.
+
+| Règle | Limite |
+|---|---|
+| Sens | short ; la base impose objectif < entrée < stop (contrainte `check`) |
+| Levier | **2x** maximum |
+| Stop | **30 %** au-dessus de l'entrée au départ, jamais élargi (trigger `inverse_guardrails_update`) |
+| Objectif | **10 %** sous l'entrée ; sortie par le temps après **7 jours** |
+| Risque par trade | **1 %** du capital virtuel S (1 000 USDT de départ) |
+| Positions | **8** ouvertes au plus, **3** entrées par jour (Paris), un même pair jamais deux fois |
+| Drawdown | entrées suspendues si le capital réalisé recule de plus de **15 %** depuis son plus haut |
+
+Les valeurs de départ (stop 30 %, objectif 10 %, option de TP « suiveur » `tp_trail_pct`) sont dans
+`config.inverse_params` ; elles ne s'appliquent qu'aux **nouvelles** entrées et suivent la règle de la
+section 8 (aucun changement avant 30 trades fermés dans S, un seul à la fois, ±20 %, walk-forward,
+bootstrap). Levier, risque, 8 positions et 3 entrées par jour sont plafonnés dans le code. Le portefeuille
+S ne compte pas dans le seuil de la section 1 bis et **ne donne aucun droit** à un passage en réel.
+
 ## Relectures avec le propriétaire
 
 | Date | Décisions |
@@ -165,3 +189,4 @@ ces limites. Les bras A, B, C et le portefeuille T gardent leurs règles (sectio
 | 03/10/2026 | Démo maintenue ; seuil de la section 1 bis (50 trades, 12 semaines, IC 90 % > 0, drawdown < 15 %, aucun incident) ; limites de la section 3 inchangées ; drawdown sur réalisé + latent (section 4) ; section 7 mise à jour après l'audit des bougies ; section 8 inchangée. |
 | 04/10/2026 | Prompt 3 : section 10 (chaînes de victoires, portefeuille K), règles fournies par le propriétaire. |
 | 04/10/2026 | Section 8 : anti-cercle vicieux (trades contrefactuels pour l'adaptation, exploration à demi-risque après 7 jours sans entrée), à la demande du propriétaire. Limites des sections 1 à 4 inchangées. |
+| 07/10/2026 | Section 11 : portefeuille S (stratégie inverse, short, démo) dans une table séparée, stop 30 % / objectif 10 % ; sections 1 à 4 inchangées, démo maintenue, aucun passage en réel. |

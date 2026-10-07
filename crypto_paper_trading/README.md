@@ -118,3 +118,10 @@ Gate sont exclus. Les annonces, unlocks et transferts viennent de la recherche w
 
 Consigne : `routines/07_chaines.md` ; logique et mémoire : `docs/chaines.md` ; garde-fous :
 `GUARDRAILS.md` section 10 ; tests : `docs/tests_3.md`.
+
+## Portefeuille S — stratégie inverse (short, démo)
+
+`sql/011_inverse.sql`, `engine/inverse.py`, GUARDRAILS section 11. Un short virtuel par entrée longue
+(stop 30 % / objectif 10 % / 7 jours / levier 2x / risque 1 %), table `inverse_positions` séparée,
+suivi à chaque passage de la routine 2 (étape 5). Paramètres : `config.inverse_params` (nouvelles entrées
+seulement ; `tp_trail_pct` active un TP « suiveur » qui laisse courir le gain). Papier uniquement.

@@ -27,7 +27,8 @@
 
 1. Exécute `select paper_history();` et écris le résultat dans `$W/history.json`, puis
    `select paper_tier_data();` dans `$W/tiers.json` (addendum 2ter), puis
-   `select paper_chain_data();` dans `$W/chains.json` (prompt 3, chaînes de victoires).
+   `select paper_chain_data();` dans `$W/chains.json` (prompt 3, chaînes de victoires),
+   `select inverse_state();` dans `$W/inverse.json` (portefeuille S, stratégie inverse en démo).
 2. **Calendrier de la semaine suivante** : avec WebSearch / WebFetch, trouve les unlocks
    importants (tokenomist.ai, cryptorank.io…), les listings / nouveaux perps annoncés, et
    les événements macro ou crypto majeurs des 7 prochains jours, en priorité pour les
@@ -35,7 +36,7 @@
    avec la source de chaque ligne dans `$W/calendar.md` (10 à 20 lignes maximum).
    N'invente rien : si une info n'est pas vérifiable, ne la mets pas.
 3. Génère le rapport :
-   `python3 -m engine.cli report --history $W/history.json --calendar $W/calendar.md --tiers-data $W/tiers.json --chains-data $W/chains.json --out $W/report.md --sql $W/report.sql`
+   `python3 -m engine.cli report --history $W/history.json --calendar $W/calendar.md --tiers-data $W/tiers.json --chains-data $W/chains.json --inverse-data $W/inverse.json --out $W/report.md --sql $W/report.sql`
    (la section 9 ajoute : tableau des 4 paliers — statut, événements, réussite, R moyen,
    équilibre —, top 5 des critères testés avec lift et p corrigée, comparaison des découpes
    de sortie, P4 et fréquence des hausses > 250 %, ce qui manque pour trancher, prochaine
@@ -48,7 +49,7 @@
    prudente sur le réel.
 4. Relis `$W/report.md`. Écris dans `$W/intro.md` un paragraphe « Lecture de la semaine »
    (3 à 5 phrases factuelles tirées du rapport, sans promesse de gain), puis régénère :
-   `python3 -m engine.cli report --history $W/history.json --calendar $W/calendar.md --tiers-data $W/tiers.json --chains-data $W/chains.json --intro $W/intro.md --out $W/report.md --sql $W/report.sql --email-out $W/email.md`
+   `python3 -m engine.cli report --history $W/history.json --calendar $W/calendar.md --tiers-data $W/tiers.json --chains-data $W/chains.json --inverse-data $W/inverse.json --intro $W/intro.md --out $W/report.md --sql $W/report.sql --email-out $W/email.md`
    L'avertissement démo et la section des limites restent toujours dans le rapport.
 5. Exécute `$W/report.sql` (enregistre le rapport dans `weekly_reports`).
 6. **Envoi** à l'adresse de `config.report_email` (moustaphatall38@gmail.com) avec le

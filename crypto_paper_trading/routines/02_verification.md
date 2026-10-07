@@ -57,5 +57,12 @@
    l'instruction refusée.
 4. Contrôle : `select arm, pair, status, exit_reason, round(pnl_usd,2) pnl, r_multiple, stop_price, last_checked_at from positions where last_checked_at > now() - interval '30 minutes' order by id;`
    et, si `--daily`, `select * from daily_results order by date desc limit 1;`
-5. **Résumé** court : positions vérifiées, clôtures (raison, PnL, R), stops déplacés,
+5. **Portefeuille S — stratégie inverse (short, démo, GUARDRAILS section 11)** : après la vérification
+   et le relâchement du verrou, exécute `select inverse_state()::text as s, repeat('.', 60000) as pad;`
+   (résultat volumineux : extrais-le avec `python3 -m engine.mcp_extract <fichier> $W/inv_state.json s`),
+   puis `python3 -m engine.inverse run --state $W/inv_state.json --out $W/inv.sql` et exécute `$W/inv.sql`
+   avec `execute_sql` (une transaction ; il ouvre un short pour chaque nouvelle entrée longue, suit les
+   shorts ouverts et les ferme au stop 30 %, à l'objectif 10 % ou après 7 jours). La table `positions`
+   n'est jamais touchée. Ajoute une ligne au résumé : shorts ouverts / fermés / réalisé.
+6. **Résumé** court : positions vérifiées, clôtures (raison, PnL, R), stops déplacés,
    erreurs de données. Rappelle que c'est une démo.

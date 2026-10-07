@@ -1143,6 +1143,20 @@ def cmd_report(a):
         except Exception:
             prices = {}
     L += positions_md.bilan_section(h["positions"], prices, cap0, now)
+    if getattr(a, "inverse_data", None):
+        from . import inverse
+        try:
+            inv = load_json_loose(a.inverse_data).get("inverse") or []
+            ip = {r["pair"] for r in inv if r["status"] == "open"} - set(prices)
+            for r in inv:
+                if r["pair"] in ip and r["pair"] not in prices:
+                    try:
+                        prices[r["pair"]] = market.last_price(r["pair"])[0]
+                    except Exception:
+                        pass
+            L += ["## Bilan par portefeuille — stratégie inverse (S, démo)", ""] + inverse.report_lines(inv, prices) + [""]
+        except Exception as e:
+            L += [f"_Portefeuille S indisponible : {e}_", ""]
     L += positions_md.positions_section(open_all, sig, prices, now)
     L += positions_md.waits_section(sig, now, cfgv(cfg, "entry_rules", {}) or {})
     L += positions_md.deadlines_section(open_all, sig, lambda k: cfgv(cfg, k), now)
@@ -1350,7 +1364,7 @@ def main(argv=None):
     s.add_argument("--limit", type=int, default=40)
     s = sub.add_parser("adapt"); s.add_argument("--history", required=True); s.add_argument("--out", required=True)
     s = sub.add_parser("report"); s.add_argument("--history", required=True); s.add_argument("--out", required=True)
-    s.add_argument("--calendar"); s.add_argument("--sql"); s.add_argument("--intro"); s.add_argument("--tiers-data"); s.add_argument("--chains-data")
+    s.add_argument("--calendar"); s.add_argument("--sql"); s.add_argument("--intro"); s.add_argument("--tiers-data"); s.add_argument("--chains-data"); s.add_argument("--inverse-data")
     s.add_argument("--email-out", help="version courte pour le courriel (markdown)")
     a = ap.parse_args(argv)
     {"scan": cmd_scan, "decide": cmd_decide, "check": cmd_check, "outcomes": cmd_outcomes,
